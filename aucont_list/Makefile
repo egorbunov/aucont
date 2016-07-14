@@ -1,8 +1,8 @@
-BIN_NAME = aucont_exec
+BIN_NAME = aucont_list
 BIN_DIR = bin
 CXX = g++
-CXX_FLAGS = -std=c++11 -Wall -Wextra -pedantic-errors
-LD_FLAGS = 
+CXX_FLAGS = -std=c++11 -Wall -Werror -Wextra -pedantic-errors -I../libaucont_file/src
+LD_FLAGS = -laucont_file
 SRC_EXT = cpp
 SRC_PATH = src
 
@@ -22,7 +22,7 @@ all: $(BIN_DIR)/$(BIN_NAME)
 
 $(BIN_DIR)/$(BIN_NAME): $(OBJECTS)
 	echo $(OBJECTS)
-	$(CXX) $(OBJECTS) $(LDFLAGS) -o $@
+	$(CXX) $(OBJECTS) $(LD_FLAGS) -o $@
 
 $(BIN_DIR)/%.o: $(SRC_PATH)/%.$(SRC_EXT)
 	$(CXX) $(CXX_FLAGS) -c $< -o $@

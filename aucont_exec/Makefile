@@ -1,7 +1,7 @@
 BIN_NAME = aucont_exec
 BIN_DIR = bin
 CXX = g++
-CXX_FLAGS = -std=c++11 -Wall -Wextra -pedantic-errors
+CXX_FLAGS = -std=c++11 -Wall -Wextra -Werror -pedantic-errors
 LD_FLAGS = 
 SRC_EXT = cpp
 SRC_PATH = src

@@ -1,0 +1,29 @@
+BIN_NAME = aucont_exec
+BIN_DIR = bin
+CXX = g++
+CXX_FLAGS = -std=c++11 -Wall -Wextra -pedantic-errors
+LD_FLAGS = 
+SRC_EXT = cpp
+SRC_PATH = src
+
+SOURCES = $(shell find $(SRC_PATH) -name '*.$(SRC_EXT)' -printf '%T@\t%p\n' \
+                                                    | sort -k 1nr | cut -f2-)
+OBJECTS = $(SOURCES:$(SRC_PATH)/%.$(SRC_EXT)=$(BIN_DIR)/%.o)
+
+.PHONY: dirs
+dirs:
+	mkdir $(BIN_DIR)
+
+.PHONY: clean
+clean:
+	rm -rf $(BIN_DIR)/*    
+
+all: $(BIN_DIR)/$(BIN_NAME)
+
+$(BIN_DIR)/$(BIN_NAME): $(OBJECTS)
+	echo $(OBJECTS)
+	$(CXX) $(OBJECTS) $(LDFLAGS) -o $@
+
+$(BIN_DIR)/%.o: $(SRC_PATH)/%.$(SRC_EXT)
+	$(CXX) $(CXX_FLAGS) -c $< -o $@
+

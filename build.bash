@@ -7,6 +7,7 @@ cd ../
 for d in aucont_*/; do
 	echo "Building $d"
 	cd "$d"
+    make dirs
 	make clean all
 	cd ../
 done

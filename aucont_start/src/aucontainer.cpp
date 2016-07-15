@@ -4,9 +4,13 @@
 #include <sys/mount.h>
 #include <sched.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/syscall.h>
 
 #include <iostream>
 #include <exception>
+#include <string>
 #include <sstream>
 #include <cstring>
 #include <cerrno>
@@ -25,13 +29,33 @@ namespace aucont
             return ss.str();
         }
 
-        void mount_fs(const char* target_root)
+        void mount_fs(std::string root)
         {
-            std::cout << "Bind mounting " << target_root << " into /" << std::endl;
-            auto res = mount(target_root, "/", "none", MS_BIND, NULL);
-            if (res < 0) {
-                throw std::runtime_error(form_error("Can't mount given FS Path as root direcotry"));
+            // recursively making all mount points private
+            if (mount("ignored", "/", NULL, MS_PRIVATE | MS_REC, NULL) != 0) {
+                throw std::runtime_error(form_error("Can't make mount points private"));
             }
+
+            // Changing root
+            std::string p_root = root + ((root[root.length() - 1] == '/') ? ".p_root" : "/.p_root/");
+            std::cout << "pivot root = " << p_root << std::endl; 
+            if (mkdir(p_root.c_str(), 0777) != 0 ||
+                mount(root.c_str(), root.c_str(), "bind", MS_BIND | MS_REC, NULL) != 0 ||
+                syscall(SYS_pivot_root, root.c_str(), p_root.c_str()) != 0 ||
+                chdir("/") != 0 ||
+                umount2(p_root.c_str(), MNT_DETACH) != 0) {
+                throw std::runtime_error(form_error("Can't change root to " + root));
+            }
+
+            std::cout << "Mounting procfs" << std::endl;
+            // 1) remount /proc because to disable mount/unmount events propagation to parent mount ns
+            // 2) mount procfs!
+            if (mount("ignored", "/proc", NULL, MS_PRIVATE | MS_REC, NULL) != 0 ||
+                mount("ignored", "/proc", "proc", MS_NOSUID | MS_NOEXEC | MS_NODEV, NULL) != 0) {
+                throw std::runtime_error(form_error("Can't mount procfs"));
+            }
+
+            (void) root;
         }
 
         /**

@@ -47,7 +47,7 @@ namespace aucont
                 throw_err("Can't make mount points private");
             }
 
-            // Mounting new root
+            // mounting new root
             std::string p_root = root + ((root[root.length() - 1] == '/') ? "" : "/") + p_root_dir_name;
             std::cout << "pivot root = " << p_root << std::endl;
             struct stat st;

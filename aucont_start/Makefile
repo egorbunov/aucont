@@ -18,11 +18,13 @@ dirs:
 clean:
 	rm -rf $(BIN_DIR)/*    
 
-all: $(BIN_DIR)/$(BIN_NAME)
+all: $(BIN_DIR) $(BIN_DIR)/$(BIN_NAME)
 
-$(BIN_DIR)/$(BIN_NAME): $(OBJECTS)
+$(BIN_DIR):
+	mkdir $(BIN_DIR)
+
+$(BIN_DIR)/$(BIN_NAME): $(OBJECTS) 
 	$(CXX) $(OBJECTS) $(LD_FLAGS) -o $@
 
 $(BIN_DIR)/%.o: $(SRC_PATH)/%.$(SRC_EXT)
 	$(CXX) $(CXX_FLAGS) -c $< -o $@
-

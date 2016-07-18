@@ -32,12 +32,4 @@ namespace aucont
     };
 
     void start_container(const options&);
-
-    /**
-     * Daemonizes current process.
-     * Calling process (caller) will terminate during function execution
-     * `getpid()` after call not equal to `getpid()` before, because 
-     * daemonized child process returns from this function (not caller)
-     */
-    void daemonize();
 }

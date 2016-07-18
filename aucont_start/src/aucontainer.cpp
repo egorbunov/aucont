@@ -29,33 +29,72 @@ namespace aucont
             return ss.str();
         }
 
-        void mount_fs(std::string root)
+        void throw_err(std::string prefix)
         {
+            throw std::runtime_error(form_error(prefix));         
+        }
+
+        /**
+         * Sets file system in container
+         * @param root path to new containers root folder (path in host fs)
+         */
+        void setup_fs(std::string root)
+        {
+            const std::string p_root_dir_name = ".p_root";
+
             // recursively making all mount points private
-            if (mount("ignored", "/", NULL, MS_PRIVATE | MS_REC, NULL) != 0) {
-                throw std::runtime_error(form_error("Can't make mount points private"));
+            if (mount(NULL, "/", NULL, MS_PRIVATE | MS_REC, NULL) != 0) {
+                throw_err("Can't make mount points private");
             }
 
-            // Changing root
-            std::string p_root = root + ((root[root.length() - 1] == '/') ? ".p_root" : "/.p_root/");
-            std::cout << "pivot root = " << p_root << std::endl; 
-            if (mkdir(p_root.c_str(), 0777) != 0 ||
-                mount(root.c_str(), root.c_str(), "bind", MS_BIND | MS_REC, NULL) != 0 ||
-                syscall(SYS_pivot_root, root.c_str(), p_root.c_str()) != 0 ||
-                chdir("/") != 0 ||
-                umount2(p_root.c_str(), MNT_DETACH) != 0) {
-                throw std::runtime_error(form_error("Can't change root to " + root));
+            // Mounting new root
+            std::string p_root = root + ((root[root.length() - 1] == '/') ? "" : "/") + p_root_dir_name;
+            std::cout << "pivot root = " << p_root << std::endl;
+            struct stat st;
+            if (stat(p_root.c_str(), &st) != 0) {
+                if (mkdir(p_root.c_str(), 0777) != 0) {
+                    throw_err("Can't create directory for old root");
+                }
+            }
+            if (mount(root.c_str(), root.c_str(), "bind", MS_BIND | MS_REC, NULL) != 0) {
+                throw_err("Mounting new root failed!");
+            }
+            if (syscall(SYS_pivot_root, root.c_str(), p_root.c_str()) != 0) {
+                throw_err("Pivot root SYS call failed");
+            }
+            if (chdir("/") != 0) {
+                throw_err("Can't change working directory");
+            }
+            std::string old_root_dir = "/" + p_root_dir_name;
+            if (umount2(old_root_dir.c_str(), MNT_DETACH) != 0) {
+                throw_err("Can't unmount old root");
             }
 
-            std::cout << "Mounting procfs" << std::endl;
-            // 1) remount /proc because to disable mount/unmount events propagation to parent mount ns
-            // 2) mount procfs!
-            if (mount("ignored", "/proc", NULL, MS_PRIVATE | MS_REC, NULL) != 0 ||
-                mount("ignored", "/proc", "proc", MS_NOSUID | MS_NOEXEC | MS_NODEV, NULL) != 0) {
-                throw std::runtime_error(form_error("Can't mount procfs"));
+            // mounting procfs
+            if (mount("ignored", "/proc", "proc", MS_NOSUID | MS_NOEXEC | MS_NODEV, NULL) != 0) {
+                throw_err("Can't mount procfs");
             }
+        }
 
-            (void) root;
+        void setup_networking(const char* ip)
+        {
+
+        }
+
+        void setup_cgroup(int cpu_perc)
+        {
+
+        }
+
+        /**
+         * Daemonizes current process.
+         * Calling process (caller) will terminate during function execution
+         * `getpid()` after call not equal to `getpid()` before, because 
+         * daemonized child process returns from this function (not caller)
+         */
+        void daemonize()
+        {
+
         }
 
         /**
@@ -65,17 +104,27 @@ namespace aucont
         {
             const options& opts = *reinterpret_cast<const options*>(arg);
 
-            mount_fs(opts.fsimg_path);
+            setup_fs(opts.fsimg_path);
+            if (arg.ip != nullptr) {
+                setup_networking(arg.ip);
+            }
+            if (arg.cpu_perc != 100) {
+                setup_cgroup(cpu_perc);
+            }
+            if (arg.daemonize) {
+                daemonize();
+            }
 
-            // Running specified command
+            // Running specified command inside container
             auto cmd_proc_pid = fork();
             if (cmd_proc_pid < 0) {
-                throw std::runtime_error(form_error("Can't create process for cmd execution inside container"));
-            } else if (cmd_proc_pid == 0) { 
+                throw_err("Can't create process for cmd execution inside container");
+            }
+            if (cmd_proc_pid == 0) { 
                 // command execution process
                 int result = execvp(opts.cmd, const_cast<char* const *>(opts.args));
                 if (result < 0) {
-                    throw std::runtime_error(form_error("Can't run command in container"));
+                    throw_err("Can't run command in container");
                 }
                 return result;
             } else { 
@@ -93,7 +142,7 @@ namespace aucont
                               CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWNET | SIGCHLD, 
                               const_cast<void*>(reinterpret_cast<const void*>(&opts)));
         if (cont_pid < 0) {
-            throw std::runtime_error(form_error("Can't run container procss"));
+            throw_err("Can't run container procss");
         }
 
         std::cout << "CONTAINER PID = " << cont_pid << std::endl;

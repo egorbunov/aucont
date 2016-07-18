@@ -1,7 +1,10 @@
 LIB_NAME = libaucont_file.so
 
 .PHONY: all
-all: bin bin/$(LIB_NAME)
+all: bin/ bin/$(LIB_NAME)
+
+bin/:
+	mkdir bin
 
 bin/$(LIB_NAME): src/aucont_file.cpp src/aucont_file.h
 	g++ -fPIC -shared -std=c++11 -Werror -Wall -pedantic-errors src/aucont_file.cpp -o $@

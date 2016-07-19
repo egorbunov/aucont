@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
+#include <fcntl.h>
 
 #include <iostream>
 #include <exception>
@@ -21,6 +22,17 @@ namespace aucont
     {
         const size_t stack_size = 2 * 1024 * 1024; // 2 megabytes
         char container_stack[stack_size];
+
+        struct cont_params
+        {
+            const options& opts;
+            int in_pipe_fd;
+            int out_pipe_fd;
+
+            cont_params(const options& opts, int in_pipe_fd, int out_pipe_fd)
+            : opts(opts), in_pipe_fd(in_pipe_fd), out_pipe_fd(out_pipe_fd)
+            {}
+        };
 
         std::string form_error(std::string prefix) 
         {
@@ -78,12 +90,12 @@ namespace aucont
 
         void setup_networking(const char* ip)
         {
-
+            (void) ip;
         }
 
         void setup_cgroup(int cpu_perc)
         {
-
+            (void) cpu_perc;
         }
 
         /**
@@ -102,18 +114,20 @@ namespace aucont
          */
         int container_proc(void* arg)
         {
-            const options& opts = *reinterpret_cast<const options*>(arg);
+            auto params = *reinterpret_cast<const cont_params*>(arg);
+            auto opts = params.opts;
 
-            setup_fs(opts.fsimg_path);
-            if (arg.ip != nullptr) {
-                setup_networking(arg.ip);
+            if (opts.ip != nullptr) {
+                setup_networking(opts.ip);
             }
-            if (arg.cpu_perc != 100) {
-                setup_cgroup(cpu_perc);
+            if (opts.cpu_perc != 100) {
+                setup_cgroup(opts.cpu_perc);
             }
-            if (arg.daemonize) {
+            if (opts.daemonize) {
                 daemonize();
             }
+
+            setup_fs(opts.fsimg_path);
 
             // Running specified command inside container
             auto cmd_proc_pid = fork();
@@ -137,10 +151,21 @@ namespace aucont
 
     void start_container(const options& opts)
     {
-        // spawning container process with it's own PID, MNT and NET namespaces
+        /**
+         * Setting up IPC for syncronization with container (child)
+         * We need pipe to send stuff to container (name of virtual ethernet device, ...)
+         */
+        int to_cont_pipe_fds[2];
+        int from_cont_pipe_fds[2];
+        if (pipe2(to_cont_pipe_fds, O_CLOEXEC) != 0 ||
+            pipe2(from_cont_pipe_fds, O_CLOEXEC) != 0) {
+            throw_err("Can't open pipes for IPC with container");
+        }
+
+        auto params = cont_params(opts, to_cont_pipe_fds[0], from_cont_pipe_fds[1]);
         auto cont_pid = clone(container_proc, container_stack + stack_size, 
-                              CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWNET | SIGCHLD, 
-                              const_cast<void*>(reinterpret_cast<const void*>(&opts)));
+                              CLONE_NEWPID | CLONE_NEWNET | CLONE_NEWNS | SIGCHLD, 
+                              const_cast<void*>(reinterpret_cast<const void*>(&params)));
         if (cont_pid < 0) {
             throw_err("Can't run container procss");
         }

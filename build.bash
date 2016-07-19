@@ -1,15 +1,15 @@
-#! /bin/sh
+#! /bin/bash
 
 cd libaucont_file
 pwd
-echo ===========================================>
+echo ===========================================
 sudo make clean install
 cd ../
 
 for d in aucont_*/; do
 	cd "$d"
     pwd
-    echo ===========================================>
+    echo ===========================================
 	make clean all
 	cd ../
 done

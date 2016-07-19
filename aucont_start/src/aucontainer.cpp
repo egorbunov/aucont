@@ -27,7 +27,6 @@ namespace aucont
         {
             const options& opts;
             int in_pipe_fd;
-            int out_pipe_fd;
 
             cont_params(const options& opts, int in_pipe_fd, int out_pipe_fd)
             : opts(opts), in_pipe_fd(in_pipe_fd), out_pipe_fd(out_pipe_fd)
@@ -88,9 +87,22 @@ namespace aucont
             }
         }
 
-        void setup_networking(const char* ip)
+        void setup_net_cont(const char* ip, const char* veth_name)
         {
             (void) ip;
+            (void) veth_name;
+        }
+
+        /**
+         * Configure host side of networking interface
+         * @param cont_ip [description]
+         * @param pipe_fd [description]
+         */
+        void setup_net_host(pid_t cont_id, const char* cont_ip, int pipe_fd)
+        {
+            (void) cont_id;
+            (void) cont_ip;
+            (void) pipe_fd;
         }
 
         void setup_cgroup(int cpu_perc)
@@ -156,9 +168,7 @@ namespace aucont
          * We need pipe to send stuff to container (name of virtual ethernet device, ...)
          */
         int to_cont_pipe_fds[2];
-        int from_cont_pipe_fds[2];
-        if (pipe2(to_cont_pipe_fds, O_CLOEXEC) != 0 ||
-            pipe2(from_cont_pipe_fds, O_CLOEXEC) != 0) {
+        if (pipe2(to_cont_pipe_fds, O_CLOEXEC) != 0) {
             throw_err("Can't open pipes for IPC with container");
         }
 
@@ -167,7 +177,7 @@ namespace aucont
                               CLONE_NEWPID | CLONE_NEWNET | CLONE_NEWNS | SIGCHLD, 
                               const_cast<void*>(reinterpret_cast<const void*>(&params)));
         if (cont_pid < 0) {
-            throw_err("Can't run container procss");
+            throw_err("Can't run container process");
         }
 
         std::cout << "CONTAINER PID = " << cont_pid << std::endl;

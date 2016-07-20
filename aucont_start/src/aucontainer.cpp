@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <type_traits>
 
 #include <iostream>
 #include <exception>
@@ -18,6 +19,7 @@
 #include <cstring>
 #include <cerrno>
 #include <cstdio>
+#include <fstream>
 
 namespace aucont
 {
@@ -48,21 +50,65 @@ namespace aucont
             throw std::runtime_error(form_error(prefix));         
         }
 
+        template<typename T>
+        typename std::enable_if<std::is_pod<T>::value, T>::type read_from_pipe(int fd)
+        {
+            char buf[sizeof(T)];
+            memset(buf, 0, sizeof(T));
+            size_t offset = 0;
+            while (offset != sizeof(T)) {
+                ssize_t ret = read(fd, buf + offset, sizeof(T) - offset);
+                if (ret <= 0) {
+                    throw_err("Can't read from pipe");
+                }
+                offset += ret;
+            }
+            return *reinterpret_cast<T*>(buf);
+        }
+
+        template<typename T>
+        typename std::enable_if<std::is_pod<T>::value>::type write_to_pipe(int fd, T data)
+        {
+            void* buf = reinterpret_cast<void*>(&data);
+            size_t count = sizeof(T);
+            while (count > 0) {
+                ssize_t ret = write(fd, buf, count);
+                if (ret <= 0) {
+                    throw_err("Can't write to pipe");
+                }
+                count -= ret;
+                if (count > 0) {
+                    buf = reinterpret_cast<void*>(reinterpret_cast<char*>(buf) + ret);
+                }
+            }
+        }
+
+
+
         /**
          * Sets file system in container
          * @param root path to new containers root folder (path in host fs)
          */
         void setup_fs(std::string root)
         {
+            if (root[root.length() - 1] != '/') {
+                root = root + "/";
+            }
             const std::string p_root_dir_name = ".p_root";
 
             // recursively making all mount points private
             if (mount(NULL, "/", NULL, MS_PRIVATE | MS_REC, NULL) != 0) {
                 throw_err("Can't make mount points private");
             }
-
+            
+            // mounting procfs
+            std::string procfs_path = root + "proc";
+            if (mount(NULL, procfs_path.c_str(), "proc", MS_NOSUID | MS_NOEXEC | MS_NODEV, NULL) != 0) {
+                throw_err("Can't mount procfs");
+            }
+             
             // mounting new root
-            std::string p_root = root + ((root[root.length() - 1] == '/') ? "" : "/") + p_root_dir_name;
+            std::string p_root = root + p_root_dir_name;
             std::cout << "pivot root = " << p_root << std::endl;
             struct stat st;
             if (stat(p_root.c_str(), &st) != 0) {
@@ -85,9 +131,12 @@ namespace aucont
             }
 
             // mounting procfs
-            if (mount("ignored", "/proc", "proc", MS_NOSUID | MS_NOEXEC | MS_NODEV, NULL) != 0) {
-                throw_err("Can't mount procfs");
-            }
+            // if (mount(NULL, "/proc", NULL, MS_PRIVATE | MS_REC, NULL) != 0) {
+            //     throw_err("Can't make proc private");
+            // }
+            // if (mount(NULL, "/proc", "proc", MS_NOSUID | MS_NOEXEC | MS_NODEV, NULL) != 0) {
+            //     throw_err("Can't mount procfs");
+            // }
         }
 
         std::string get_cont_veth_name(pid_t pid)
@@ -109,18 +158,14 @@ namespace aucont
          * @param ip           container's process ip
          * @param host_pipe_fd read end of pipe to get veth device name from host
          */
-        void setup_net_cont(const char* ip, int host_pipe_fd)
+        void setup_net_cont(const char* ip, pid_t cont_pid)
         {
             struct in_addr addr;
             inet_aton(ip, &addr);
             std::string cont_ip(inet_ntoa(addr));
             cont_ip += "/24";
 
-            pid_t pid;
-            if (read(host_pipe_fd, reinterpret_cast<void*>(&pid), sizeof(pid)) != sizeof(pid)) {
-                throw_err("Error reading from pipe in cont");
-            }
-            std::string cont_veth_name = get_cont_veth_name(pid);
+            std::string cont_veth_name = get_cont_veth_name(cont_pid);
 
             const size_t cmd_max_len = 300;
             char cmd[cmd_max_len];
@@ -139,9 +184,8 @@ namespace aucont
          * Configure host side of networking interface
          * @param cont_id      container's process id
          * @param cont_ip      ip a.b.c.d, which will be assigned to container; host ip will be a.b.c.(d+1)
-         * @param cont_pipe_fd write end of pipe between host and container
          */
-        void setup_net_host(pid_t cont_id, const char* cont_ip, int cont_pipe_fd)
+        void setup_net_host(pid_t cont_id, const char* cont_ip)
         {
             struct in_addr addr;
             inet_aton(cont_ip, &addr);
@@ -171,16 +215,43 @@ namespace aucont
             if (system(cmd) != 0) {
                 throw_err("Can't assign ip to host veth");
             }
-
-            // syncronizing with container; now container can setup it's network side
-            if (write(cont_pipe_fd, reinterpret_cast<void*>(&cont_id), sizeof(pid_t)) < 0) {
-                throw_err("pipe write error");
-            }
         }
 
         void setup_cgroup(int cpu_perc)
         {
             (void) cpu_perc;
+        }
+
+        void map_id(const char *file, uint32_t from, uint32_t to)
+        {
+            std::string str = std::to_string(from) + " " + std::to_string(to) + " 1";
+            std::ofstream out(file);
+            if (!out) {
+                throw_err("Can't open file " + std::string(file));
+            }
+            out << str;
+        }
+
+        void setup_user(uid_t uid, gid_t gid)
+        {
+            // comment stolen from unshare sources
+            /* since Linux 3.19 unprivileged writing of /proc/self/gid_map
+             * has s been disabled unless /proc/self/setgroups is written
+             * first to permanently disable the ability to call setgroups
+             * in that user namespace. */
+            std::ofstream out("/proc/self/setgroups");
+            out << "deny";
+            out.close();
+            map_id("/proc/self/uid_map", 0, uid);
+            map_id("/proc/self/gid_map", 0, gid);
+        }
+
+        void setup_uts()
+        {
+            const std::string hostname = "container";
+            if (sethostname(hostname.c_str(), hostname.length()) != 0) {
+                throw_err("Can't set container hostname");
+            }
         }
 
         /**
@@ -201,16 +272,21 @@ namespace aucont
         {
             auto params = *reinterpret_cast<const cont_params*>(arg);
             auto opts = params.opts;
+            
+            // reading creators uid and gid from pipe
+            uid_t uid = read_from_pipe<uid_t>(params.in_pipe_fd);
+            gid_t gid = read_from_pipe<gid_t>(params.in_pipe_fd);
+
+            setup_user(uid, gid);
+            setup_uts();
 
             if (opts.ip != nullptr) {
-                setup_net_cont(opts.ip, params.in_pipe_fd);
+                setup_net_cont(opts.ip, read_from_pipe<pid_t>(params.in_pipe_fd));
             }
+            close(params.in_pipe_fd);
 
             setup_fs(opts.fsimg_path);
 
-            if (opts.cpu_perc != 100) {
-                setup_cgroup(opts.cpu_perc);
-            }
             if (opts.daemonize) {
                 daemonize();
             }
@@ -248,17 +324,28 @@ namespace aucont
 
         auto params = cont_params(opts, to_cont_pipe_fds[0]);
         auto cont_pid = clone(container_proc, container_stack + stack_size, 
-                              CLONE_NEWPID | CLONE_NEWNET | CLONE_NEWNS | SIGCHLD, 
+                              CLONE_NEWPID | CLONE_NEWNET | CLONE_NEWNS | 
+                              CLONE_NEWUTS | CLONE_NEWUSER | CLONE_NEWIPC | 
+                              SIGCHLD, 
                               const_cast<void*>(reinterpret_cast<const void*>(&params)));
         if (cont_pid < 0) {
             throw_err("Can't run container process");
         }
 
+        // sending uid and gid
+        write_to_pipe(to_cont_pipe_fds[1], geteuid());
+        write_to_pipe(to_cont_pipe_fds[1], getegid());
+
         // setting up networking if needed (host part)
         if (opts.ip != nullptr) {
-            setup_net_host(cont_pid, opts.ip, to_cont_pipe_fds[1]);
+            setup_net_host(cont_pid, opts.ip);
+            // syncronizing with container; now container can setup it's network side
+            write_to_pipe(to_cont_pipe_fds[1], cont_pid);
         }
         close(to_cont_pipe_fds[1]);
+        if (opts.cpu_perc != 100) {
+            setup_cgroup(opts.cpu_perc);
+        }
 
         std::cout << "CONTAINER PID = " << cont_pid << std::endl;
         waitpid(cont_pid, NULL, 0);

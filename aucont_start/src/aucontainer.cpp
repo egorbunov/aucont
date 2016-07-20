@@ -8,6 +8,8 @@
 #include <sys/types.h>
 #include <sys/syscall.h>
 #include <fcntl.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 
 #include <iostream>
 #include <exception>
@@ -15,6 +17,7 @@
 #include <sstream>
 #include <cstring>
 #include <cerrno>
+#include <cstdio>
 
 namespace aucont
 {
@@ -28,8 +31,8 @@ namespace aucont
             const options& opts;
             int in_pipe_fd;
 
-            cont_params(const options& opts, int in_pipe_fd, int out_pipe_fd)
-            : opts(opts), in_pipe_fd(in_pipe_fd), out_pipe_fd(out_pipe_fd)
+            cont_params(const options& opts, int in_pipe_fd)
+            : opts(opts), in_pipe_fd(in_pipe_fd)
             {}
         };
 
@@ -87,22 +90,92 @@ namespace aucont
             }
         }
 
-        void setup_net_cont(const char* ip, const char* veth_name)
+        std::string get_cont_veth_name(pid_t pid)
         {
-            (void) ip;
-            (void) veth_name;
+            std::stringstream ss;
+            ss << "cont_" << pid << "_veth";
+            return ss.str();
+        }
+
+        std::string get_host_veth_name(pid_t pid)
+        {
+            std::stringstream ss;
+            ss << "host_" << pid << "_veth";
+            return ss.str();   
+        }
+
+        /**
+         * Configures container side of networking interface
+         * @param ip           container's process ip
+         * @param host_pipe_fd read end of pipe to get veth device name from host
+         */
+        void setup_net_cont(const char* ip, int host_pipe_fd)
+        {
+            struct in_addr addr;
+            inet_aton(ip, &addr);
+            std::string cont_ip(inet_ntoa(addr));
+            cont_ip += "/24";
+
+            pid_t pid;
+            if (read(host_pipe_fd, reinterpret_cast<void*>(&pid), sizeof(pid)) != sizeof(pid)) {
+                throw_err("Error reading from pipe in cont");
+            }
+            std::string cont_veth_name = get_cont_veth_name(pid);
+
+            const size_t cmd_max_len = 300;
+            char cmd[cmd_max_len];
+            sprintf(cmd, "ip link set %s up", cont_veth_name.c_str());
+            if (system(cmd) != 0) {
+                throw_err("Can't change cont veth state to UP");
+            }
+
+            sprintf(cmd, "ip addr add %s dev %s", cont_ip.c_str(), cont_veth_name.c_str());
+            if (system(cmd) != 0) {
+                throw_err("Can't assign ip address to container");
+            }
         }
 
         /**
          * Configure host side of networking interface
-         * @param cont_ip [description]
-         * @param pipe_fd [description]
+         * @param cont_id      container's process id
+         * @param cont_ip      ip a.b.c.d, which will be assigned to container; host ip will be a.b.c.(d+1)
+         * @param cont_pipe_fd write end of pipe between host and container
          */
-        void setup_net_host(pid_t cont_id, const char* cont_ip, int pipe_fd)
+        void setup_net_host(pid_t cont_id, const char* cont_ip, int cont_pipe_fd)
         {
-            (void) cont_id;
-            (void) cont_ip;
-            (void) pipe_fd;
+            struct in_addr addr;
+            inet_aton(cont_ip, &addr);
+            std::string host_ip(inet_ntoa(inet_makeaddr(inet_netof(addr), inet_lnaof(addr) + 1)));
+            host_ip += "/24";
+            std::string host_veth_name = get_host_veth_name(cont_id);
+            std::string cont_veth_name = get_cont_veth_name(cont_id);
+
+            const size_t cmd_max_len = 300;
+            char cmd[cmd_max_len];
+            sprintf(cmd, "ip link add %s type veth peer name %s", host_veth_name.c_str(), cont_veth_name.c_str());
+            if (system(cmd) != 0) {
+                throw_err("Can't create veth pair");
+            }
+
+            sprintf(cmd, "ip link set %s netns %d", cont_veth_name.c_str(), cont_id);
+            if (system(cmd) != 0) {
+                throw_err("Can't set container veth");
+            }
+
+            sprintf(cmd, "ip link set %s up", host_veth_name.c_str());
+            if (system(cmd) != 0) {
+                throw_err("Can't change host veth state to UP");
+            }
+
+            sprintf(cmd, "ip addr add %s dev %s", host_ip.c_str(), host_veth_name.c_str());
+            if (system(cmd) != 0) {
+                throw_err("Can't assign ip to host veth");
+            }
+
+            // syncronizing with container; now container can setup it's network side
+            if (write(cont_pipe_fd, reinterpret_cast<void*>(&cont_id), sizeof(pid_t)) < 0) {
+                throw_err("pipe write error");
+            }
         }
 
         void setup_cgroup(int cpu_perc)
@@ -130,16 +203,17 @@ namespace aucont
             auto opts = params.opts;
 
             if (opts.ip != nullptr) {
-                setup_networking(opts.ip);
+                setup_net_cont(opts.ip, params.in_pipe_fd);
             }
+
+            setup_fs(opts.fsimg_path);
+
             if (opts.cpu_perc != 100) {
                 setup_cgroup(opts.cpu_perc);
             }
             if (opts.daemonize) {
                 daemonize();
             }
-
-            setup_fs(opts.fsimg_path);
 
             // Running specified command inside container
             auto cmd_proc_pid = fork();
@@ -172,7 +246,7 @@ namespace aucont
             throw_err("Can't open pipes for IPC with container");
         }
 
-        auto params = cont_params(opts, to_cont_pipe_fds[0], from_cont_pipe_fds[1]);
+        auto params = cont_params(opts, to_cont_pipe_fds[0]);
         auto cont_pid = clone(container_proc, container_stack + stack_size, 
                               CLONE_NEWPID | CLONE_NEWNET | CLONE_NEWNS | SIGCHLD, 
                               const_cast<void*>(reinterpret_cast<const void*>(&params)));
@@ -180,8 +254,13 @@ namespace aucont
             throw_err("Can't run container process");
         }
 
-        std::cout << "CONTAINER PID = " << cont_pid << std::endl;
+        // setting up networking if needed (host part)
+        if (opts.ip != nullptr) {
+            setup_net_host(cont_pid, opts.ip, to_cont_pipe_fds[1]);
+        }
+        close(to_cont_pipe_fds[1]);
 
+        std::cout << "CONTAINER PID = " << cont_pid << std::endl;
         waitpid(cont_pid, NULL, 0);
     }
 }

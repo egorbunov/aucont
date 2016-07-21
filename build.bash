@@ -6,7 +6,7 @@ cd src
 cd libaucont_file
 pwd
 echo ============ Building libaucont_file ============
-sudo make clean all
+make clean all
 cd ../
 
 for d in aucont_*/; do

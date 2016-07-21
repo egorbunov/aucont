@@ -21,6 +21,8 @@
 #include <cstdio>
 #include <fstream>
 
+#include <aucont_file.h>
+
 namespace aucont
 {
     namespace
@@ -32,9 +34,10 @@ namespace aucont
         {
             const options& opts;
             int in_pipe_fd;
+            int out_pipe_fd;
 
-            cont_params(const options& opts, int in_pipe_fd)
-            : opts(opts), in_pipe_fd(in_pipe_fd)
+            cont_params(const options& opts, int in_pipe_fd, int out_pipe_fd)
+            : opts(opts), in_pipe_fd(in_pipe_fd), out_pipe_fd(out_pipe_fd)
             {}
         };
 
@@ -82,7 +85,6 @@ namespace aucont
                 }
             }
         }
-
 
 
         /**
@@ -209,9 +211,19 @@ namespace aucont
             }
         }
 
-        void setup_cgroup(int cpu_perc)
+        void setup_cgroup(std::string scripts_path, int cpu_perc, pid_t cont_pid)
         {
-            (void) cpu_perc;
+            const std::string script = "setup_cpu_cgroup.bash";
+
+            std::stringstream cmdss;
+            cmdss << "bash " << scripts_path << script << " " 
+                  << cpu_perc << " " << cont_pid 
+                  << " \"" << aucont::get_cgrouph_path() << "\""; // path to cgroup hierarchy root
+            std::string cmd = cmdss.str();
+
+            if (system(cmd.c_str()) != 0) {
+                throw_err("Can't setup cpu restrictions");
+            }
         }
 
         void map_id(const char *file, uint32_t from, uint32_t to)
@@ -283,6 +295,9 @@ namespace aucont
                 daemonize();
             }
 
+            // end configuring container
+            write_to_pipe(params.out_pipe_fd, true);
+
             // Running specified command inside container
             auto cmd_proc_pid = fork();
             if (cmd_proc_pid < 0) {
@@ -301,20 +316,45 @@ namespace aucont
                 return 0;
             }
         }
+
+        /**
+         * Container death handler. 
+         * There are only one child may exist for main process -- container.
+         *
+         * TODO: wrong if child was just stopped, not terminated
+         */
+        void child_handler(int sig)
+        {
+            if (sig != SIGCHLD) {
+                return;
+            }
+
+            int status;
+            pid_t cont_pid = wait(&status);
+            if (cont_pid < 0) {
+                std::cerr << "Wait failed" << std::endl;
+                exit(1);
+            }
+            std::cout << cont_pid << " termintaed" << std::endl;
+            aucont::del_container_pid(cont_pid);
+            exit(0);
+        }
     }
 
-    void start_container(const options& opts)
+    void start_container(const options& opts, std::string exe_path)
     {
         /**
          * Setting up IPC for syncronization with container (child)
          * We need pipe to send stuff to container (name of virtual ethernet device, ...)
          */
         int to_cont_pipe_fds[2];
-        if (pipe2(to_cont_pipe_fds, O_CLOEXEC) != 0) {
+        int from_cont_pipe_fds[2];
+        if (pipe2(to_cont_pipe_fds, O_CLOEXEC) != 0 ||
+            pipe2(from_cont_pipe_fds, O_CLOEXEC) != 0) {
             throw_err("Can't open pipes for IPC with container");
         }
 
-        auto params = cont_params(opts, to_cont_pipe_fds[0]);
+        auto params = cont_params(opts, to_cont_pipe_fds[0], from_cont_pipe_fds[1]);
         auto cont_pid = clone(container_proc, container_stack + stack_size, 
                               CLONE_NEWPID | CLONE_NEWNET | CLONE_NEWNS | 
                               CLONE_NEWUTS | CLONE_NEWUSER | CLONE_NEWIPC | 
@@ -336,10 +376,32 @@ namespace aucont
         }
         close(to_cont_pipe_fds[1]);
         if (opts.cpu_perc != 100) {
-            setup_cgroup(opts.cpu_perc);
+            setup_cgroup(exe_path, opts.cpu_perc, cont_pid);
         }
 
-        std::cout << "CONTAINER PID = " << cont_pid << std::endl;
-        waitpid(cont_pid, NULL, 0);
+
+        // adding SIGCHLD handling
+        struct sigaction sa;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = 0;
+        sa.sa_handler = child_handler;
+        if (sigaction(SIGCHLD, &sa, NULL) < 0) {
+            throw_err("Can't set signal handler");
+        }
+
+        // waiting for container to be configured
+        // if something goes wrong signal handler would handle terminated child
+        read_from_pipe<bool>(from_cont_pipe_fds[0]);
+
+        sa.sa_handler = SIG_DFL;
+        if (sigaction(SIGCHLD, &sa, NULL) < 0) {
+            throw_err("Cant' remove signal handler");
+        }
+
+        aucont::add_container_pid(cont_pid);
+        std::cout << cont_pid << std::endl;
+
+        // waiting for container to terminate
+        child_handler(SIGCHLD);
     }
 }

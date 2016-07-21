@@ -16,20 +16,21 @@ namespace aucont
     {
         const std::string pids_dir = "/usr/share/aucont";
         const std::string pids_file = "/usr/share/aucont/containers";
+        const std::string cgrouph_root = "/usr/share/aucont/cgrouph";
 
         bool not_exist(std::string filename) {
             struct stat st;
-            int result = stat(filename.c_str(), &st);
-            if (result == EACCES) {
+            if (stat(filename.c_str(), &st) < 0 && errno == ENOENT) {
                 return true;
             }
             return false;
         }
 
+    
         void prepare()
         {
             if (not_exist(pids_dir)) {
-                int result = mkdir(pids_dir.c_str(), 0600);
+                int result = mkdir(pids_dir.c_str(), 0777);
                 if (result != 0) {
                     std::stringstream ss;
                     ss << "Can't create direcotry [ " << pids_dir << " ], " << "error code = [ " << errno << " ]: " << strerror(errno); 
@@ -57,10 +58,13 @@ namespace aucont
         }
     }
 
+    std::string get_cgrouph_path() {
+        return cgrouph_root;
+    }
+
     std::set<pid_t> get_containers_pids()
     {
         if (not_exist(pids_file)) {
-            std::cout << "File not exist, returning empty map" << std::endl;
             return std::set<pid_t>();
         }
 

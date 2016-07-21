@@ -18,4 +18,9 @@ namespace aucont
      * reads pids set from pids_file
      */
     std::set<pid_t> get_containers_pids();    
+
+    /**
+     * returns root path of cgroup hierarchy
+     */
+    std::string get_cgrouph_path();
 }

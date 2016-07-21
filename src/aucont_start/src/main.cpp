@@ -6,7 +6,9 @@
 #include <cstring>
 #include <cctype>
 #include <ostream>
+#include <cstdlib>
 #include <arpa/inet.h>
+
 #include "aucontainer.h"
 
 namespace 
@@ -103,7 +105,14 @@ int main(int argc, const char* argv[])
     std::cout << "Starting container with options: " << std::endl;
     print_options(opts);
 
-    aucont::start_container(opts);
+    char path_to_exe[1000];
+    realpath(argv[0], path_to_exe);
+
+    // determining exe path for correct scripts usage
+    std::string exe_path = std::string(path_to_exe);
+    exe_path = exe_path.substr(0, exe_path.find_last_of("/")) + "/";
+
+    aucont::start_container(opts, exe_path);
 
     return 0;
 }

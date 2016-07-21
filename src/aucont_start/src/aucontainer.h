@@ -2,6 +2,7 @@
 
 #include <ostream>
 #include <netinet/in.h>
+#include <string>
 
 
 namespace aucont
@@ -31,5 +32,5 @@ namespace aucont
         }
     };
 
-    void start_container(const options&);
+    void start_container(const options&, std::string exe_path);
 }

@@ -1,15 +1,21 @@
 #! /bin/bash
 
+mkdir -p bin
+cd src
+
 cd libaucont_file
 pwd
-echo ===========================================
-sudo make clean install
+echo ============ Building libaucont_file ============
+sudo make clean all
 cd ../
 
 for d in aucont_*/; do
 	cd "$d"
-    pwd
-    echo ===========================================
+    echo ============ Building $d ============
 	make clean all
 	cd ../
 done
+cd ../
+
+rm bin/*.o
+

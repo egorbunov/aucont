@@ -129,14 +129,6 @@ namespace aucont
             if (umount2(old_root_dir.c_str(), MNT_DETACH) != 0) {
                 throw_err("Can't unmount old root");
             }
-
-            // mounting procfs
-            // if (mount(NULL, "/proc", NULL, MS_PRIVATE | MS_REC, NULL) != 0) {
-            //     throw_err("Can't make proc private");
-            // }
-            // if (mount(NULL, "/proc", "proc", MS_NOSUID | MS_NOEXEC | MS_NODEV, NULL) != 0) {
-            //     throw_err("Can't mount procfs");
-            // }
         }
 
         std::string get_cont_veth_name(pid_t pid)

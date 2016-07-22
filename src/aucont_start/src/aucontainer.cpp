@@ -266,7 +266,33 @@ namespace aucont
          */
         void daemonize()
         {
-
+            switch(fork()) {
+                case -1: throw_err("Can't daemonize");
+                case 0: break;
+                default: exit(0);
+            }
+            if (setsid() < 0) {
+                throw_err("Can't daemonize (setsid failed)");
+            }
+            // double forking not to be session leader (see `man 3 daemon`)
+            switch(fork()) {
+                case -1: throw_err("Can't daemonize");
+                case 0: break;
+                default: exit(0);
+            }
+            if (chdir("/") < 0) {
+                throw_err("Can't daemonize (chdir failed)");
+            }
+            int fd = open("/dev/null", O_RDWR, 0);
+            if (fd != -1) {
+                dup2(fd, STDIN_FILENO);
+                dup2(fd, STDOUT_FILENO);
+                dup2(fd, STDERR_FILENO);
+                if (fd > 2) {
+                    close(fd);
+                }
+            }
+            umask(027);
         }
 
         /**
@@ -289,11 +315,6 @@ namespace aucont
             }
 
             setup_fs(opts.fsimg_path);
-
-            if (opts.daemonize) {
-                daemonize();
-            }
-
             // end configuring container
             write_to_pipe(params.out_pipe_fd, true);
 
@@ -304,6 +325,11 @@ namespace aucont
             close(params.in_pipe_fd);
             close(params.out_pipe_fd);
 
+            // daemonizing as last step
+            if (opts.daemonize) {
+                daemonize();
+            }
+            
             // Running specified command inside container
             auto cmd_proc_pid = fork();
             if (cmd_proc_pid < 0) {

@@ -2,7 +2,7 @@
 
 #include <sys/wait.h>
 #include <sys/mount.h>
-#include <sched.h>
+#include <linux/sched.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -287,7 +287,6 @@ namespace aucont
             if (opts.ip != nullptr) {
                 setup_net_cont(opts.ip, read_from_pipe<pid_t>(params.in_pipe_fd));
             }
-            close(params.in_pipe_fd);
 
             setup_fs(opts.fsimg_path);
 
@@ -297,6 +296,13 @@ namespace aucont
 
             // end configuring container
             write_to_pipe(params.out_pipe_fd, true);
+
+            // waiting while host configures cgroups 
+            // and other stuff, that must be configured before running 
+            // command
+            read_from_pipe<bool>(params.in_pipe_fd);
+            close(params.in_pipe_fd);
+            close(params.out_pipe_fd);
 
             // Running specified command inside container
             auto cmd_proc_pid = fork();
@@ -312,32 +318,11 @@ namespace aucont
                 return result;
             } else { 
                 // container process
-                waitpid(cmd_proc_pid, NULL, 0);
+                if (waitpid(cmd_proc_pid, NULL, 0) < 0) {
+                    throw_err("Waitpid faield");
+                }
                 return 0;
             }
-        }
-
-        /**
-         * Container death handler. 
-         * There are only one child may exist for main process -- container.
-         *
-         * TODO: wrong if child was just stopped, not terminated
-         */
-        void child_handler(int sig)
-        {
-            if (sig != SIGCHLD) {
-                return;
-            }
-
-            int status;
-            pid_t cont_pid = wait(&status);
-            if (cont_pid < 0) {
-                std::cerr << "Wait failed" << std::endl;
-                exit(1);
-            }
-            std::cout << cont_pid << " termintaed" << std::endl;
-            aucont::del_container_pid(cont_pid);
-            exit(0);
         }
     }
 
@@ -358,11 +343,14 @@ namespace aucont
         auto cont_pid = clone(container_proc, container_stack + stack_size, 
                               CLONE_NEWPID | CLONE_NEWNET | CLONE_NEWNS | 
                               CLONE_NEWUTS | CLONE_NEWUSER | CLONE_NEWIPC | 
+                              // CLONE_NEWCGROUP | // It seems to disable cpu restrictions =()
                               SIGCHLD, 
                               const_cast<void*>(reinterpret_cast<const void*>(&params)));
         if (cont_pid < 0) {
             throw_err("Can't run container process");
         }
+        close(to_cont_pipe_fds[0]);
+        close(from_cont_pipe_fds[1]);
 
         // sending uid and gid
         write_to_pipe(to_cont_pipe_fds[1], geteuid());
@@ -374,34 +362,32 @@ namespace aucont
             // syncronizing with container; now container can setup it's network side
             write_to_pipe(to_cont_pipe_fds[1], cont_pid);
         }
-        close(to_cont_pipe_fds[1]);
         if (opts.cpu_perc != 100) {
             setup_cgroup(exe_path, opts.cpu_perc, cont_pid);
         }
 
-
-        // adding SIGCHLD handling
-        struct sigaction sa;
-        sigemptyset(&sa.sa_mask);
-        sa.sa_flags = 0;
-        sa.sa_handler = child_handler;
-        if (sigaction(SIGCHLD, &sa, NULL) < 0) {
-            throw_err("Can't set signal handler");
-        }
-
         // waiting for container to be configured
-        // if something goes wrong signal handler would handle terminated child
         read_from_pipe<bool>(from_cont_pipe_fds[0]);
+        close(from_cont_pipe_fds[0]);
 
-        sa.sa_handler = SIG_DFL;
-        if (sigaction(SIGCHLD, &sa, NULL) < 0) {
-            throw_err("Cant' remove signal handler");
+        // printing containers pid
+        if (!aucont::add_container_pid(cont_pid)) {
+            throw std::runtime_error("Conatiner with such pid is already running");
         }
-
-        aucont::add_container_pid(cont_pid);
         std::cout << cont_pid << std::endl;
 
-        // waiting for container to terminate
-        child_handler(SIGCHLD);
+        // container can proceed to command execution
+        write_to_pipe(to_cont_pipe_fds[1], true);
+        close(to_cont_pipe_fds[1]);
+
+        // do not need to wait for daemon...
+        if (opts.daemonize) {
+            return;
+        }
+
+        if (wait(NULL) < 0) {
+            throw_err("Wait failed");
+        }
+        aucont::del_container_pid(cont_pid);
     }
 }

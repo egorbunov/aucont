@@ -14,9 +14,10 @@ namespace aucont
 {
     namespace 
     {
-        const std::string pids_dir = "/usr/share/aucont";
-        const std::string pids_file = "/usr/share/aucont/containers";
-        const std::string cgrouph_root = "/usr/share/aucont/cgrouph";
+        std::string aucont_dir = "/usr/share/aucont";
+        std::string pids_file = aucont_dir + "/containers";
+        std::string cgrouph_dir = aucont_dir + "/cgrouph";
+
 
         bool not_exist(std::string filename) {
             struct stat st;
@@ -29,11 +30,11 @@ namespace aucont
     
         void prepare()
         {
-            if (not_exist(pids_dir)) {
-                int result = mkdir(pids_dir.c_str(), 0777);
+            if (not_exist(aucont_dir)) {
+                int result = mkdir(aucont_dir.c_str(), 0777);
                 if (result != 0) {
                     std::stringstream ss;
-                    ss << "Can't create direcotry [ " << pids_dir << " ], " << "error code = [ " << errno << " ]: " << strerror(errno); 
+                    ss << "Can't create direcotry [ " << aucont_dir << " ], " << "error code = [ " << errno << " ]: " << strerror(errno); 
                     throw std::runtime_error(ss.str());
                 }
             }
@@ -58,8 +59,14 @@ namespace aucont
         }
     }
 
-    std::string get_cgrouph_path() {
-        return cgrouph_root;
+    std::string get_cgrouph_path() 
+    {
+        return cgrouph_dir;
+    }
+
+    std::string get_pids_path()
+    {
+        return pids_file;
     }
 
     std::set<pid_t> get_containers_pids()
@@ -103,6 +110,13 @@ namespace aucont
         pids.erase(it);
         write_containters_pids(pids);
         return true;
+    }
+
+    void set_aucont_root(std::string root_dir)
+    {
+        aucont_dir = root_dir;
+        pids_file = aucont_dir + "/containers";
+        cgrouph_dir = aucont_dir + "/cgrouph";
     }
 }
 

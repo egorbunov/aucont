@@ -23,4 +23,14 @@ namespace aucont
      * returns root path of cgroup hierarchy
      */
     std::string get_cgrouph_path();
+
+    /**
+     * returns file with cont pids
+     */
+    std::string get_pids_path();
+
+    /**
+     * sets up root directory for creating files (cgrouph, file with pids)
+     */
+    void set_aucont_root(std::string root_dir);
 }

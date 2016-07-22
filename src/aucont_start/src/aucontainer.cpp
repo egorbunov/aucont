@@ -27,6 +27,13 @@ namespace aucont
 {
     namespace
     {
+        void log(std::string str)
+        {
+            std::ofstream out("/home/eg/Desktop/log.txt", std::ios_base::app | std::ios_base::out);
+            out << str << std::endl;
+            out.close();
+        }
+
         const size_t stack_size = 2 * 1024 * 1024; // 2 megabytes
         char container_stack[stack_size];
 
@@ -266,19 +273,21 @@ namespace aucont
          */
         void daemonize()
         {
-            switch(fork()) {
-                case -1: throw_err("Can't daemonize");
-                case 0: break;
-                default: exit(0);
+            auto pid = fork();
+            if (pid < 0) {
+                throw_err("Can't daemonize");
+            } else if (pid == 0) {
+                exit(0);
             }
             if (setsid() < 0) {
                 throw_err("Can't daemonize (setsid failed)");
             }
             // double forking not to be session leader (see `man 3 daemon`)
-            switch(fork()) {
-                case -1: throw_err("Can't daemonize");
-                case 0: break;
-                default: exit(0);
+            pid = fork();
+            if (pid < 0) {
+                throw_err("Can't daemonize (second fork)");
+            } else if (pid == 0) {
+                exit(0);
             }
             if (chdir("/") < 0) {
                 throw_err("Can't daemonize (chdir failed)");
@@ -329,7 +338,8 @@ namespace aucont
             if (opts.daemonize) {
                 daemonize();
             }
-            
+            log(std::to_string(getpid()));
+
             // Running specified command inside container
             auto cmd_proc_pid = fork();
             if (cmd_proc_pid < 0) {

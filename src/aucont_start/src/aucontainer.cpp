@@ -13,7 +13,7 @@
 #include <type_traits>
 
 #include <iostream>
-#include <exception>
+#include <stdexcept>
 #include <string>
 #include <sstream>
 #include <cstring>
@@ -118,7 +118,6 @@ namespace aucont
              
             // mounting new root
             std::string p_root = root + p_root_dir_name;
-            std::cout << "pivot root = " << p_root << std::endl;
             struct stat st;
             if (stat(p_root.c_str(), &st) != 0) {
                 if (mkdir(p_root.c_str(), 0777) != 0) {
@@ -336,6 +335,9 @@ namespace aucont
 
             // daemonizing as last step
             if (opts.daemonize) {
+                // if (daemon(0, 0) != 0) {
+                //     throw_err("Can't daemonize!");
+                // }
                 daemonize();
             }
             log(std::to_string(getpid()));
@@ -418,7 +420,7 @@ namespace aucont
 
         // do not need to wait for daemon...
         if (opts.daemonize) {
-            return;
+            exit(0);
         }
 
         if (wait(NULL) < 0) {

@@ -8,6 +8,7 @@
 #include <ostream>
 #include <cstdlib>
 #include <arpa/inet.h>
+#include <stdexcept>
 
 #include "aucontainer.h"
 
@@ -77,19 +78,19 @@ namespace
         return opts;
     }
 
-    void print_options(const aucont::options& opts)
-    {
-            std::cout << "Daemonize     : " << (opts.daemonize ? "Yes" : "No") << std::endl
-                      << "CPU perc      : " << opts.cpu_perc << std::endl
-                      << "Containter IP : " << (opts.ip == nullptr ? "-" : opts.ip) << std::endl
-                      << "FS Image Path : " << (opts.fsimg_path == nullptr ? "-" : opts.fsimg_path) << std::endl
-                      << "CMD line      : " << (opts.cmd == nullptr ? "-" : opts.cmd);
-            int i = 1; // args[0] is always == cmd
-            while (opts.args[i] != nullptr) {
-                std::cout << " " << opts.args[i++];
-            }
-            std::cout << std::endl;
-    }
+    // void print_options(const aucont::options& opts)
+    // {
+    //         std::cout << "Daemonize     : " << (opts.daemonize ? "Yes" : "No") << std::endl
+    //                   << "CPU perc      : " << opts.cpu_perc << std::endl
+    //                   << "Containter IP : " << (opts.ip == nullptr ? "-" : opts.ip) << std::endl
+    //                   << "FS Image Path : " << (opts.fsimg_path == nullptr ? "-" : opts.fsimg_path) << std::endl
+    //                   << "CMD line      : " << (opts.cmd == nullptr ? "-" : opts.cmd);
+    //         int i = 1; // args[0] is always == cmd
+    //         while (opts.args[i] != nullptr) {
+    //             std::cout << " " << opts.args[i++];
+    //         }
+    //         std::cout << std::endl;
+    // }
 }
 
 int main(int argc, const char* argv[]) 
@@ -102,15 +103,17 @@ int main(int argc, const char* argv[])
         print_usage();
         return 0;
     }
-    std::cout << "Starting container with options: " << std::endl;
-    print_options(opts);
+    // std::cout << "Starting container with options: " << std::endl;
+    // print_options(opts);
 
+    // determining exe path for correct scripts usage and ...
     char path_to_exe[1000];
     realpath(argv[0], path_to_exe);
-
-    // determining exe path for correct scripts usage
-    std::string exe_path = std::string(path_to_exe);
+    auto exe_path = std::string(path_to_exe);
     exe_path = exe_path.substr(0, exe_path.find_last_of("/")) + "/";
+
+    // preparing aucont common resources path
+    aucont::set_aucont_root(exe_path);
 
     aucont::start_container(opts, exe_path);
 

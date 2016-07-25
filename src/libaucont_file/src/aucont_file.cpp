@@ -3,7 +3,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <fstream>
-#include <exception>
+#include <stdexcept>
 #include <iostream>
 #include <sstream>
 #include <cerrno>
@@ -14,7 +14,7 @@ namespace aucont
 {
     namespace 
     {
-        std::string aucont_dir = "/usr/share/aucont";
+        std::string aucont_dir = ".";
         std::string pids_file = aucont_dir + "/containers";
         std::string cgrouph_dir = aucont_dir + "/cgrouph";
 
@@ -45,6 +45,7 @@ namespace aucont
          */
         void write_containters_pids(std::set<pid_t> pids)
         {
+            // std::cout << "FILE: " << pids_file << std::endl;
             prepare();
             std::ofstream out(pids_file.c_str(), std::ios_base::trunc | std::ios_base::out | std::ios_base::binary);
             if (out.fail()) {
@@ -71,6 +72,7 @@ namespace aucont
 
     std::set<pid_t> get_containers_pids()
     {
+        // std::cout << "FILE: " << pids_file << std::endl;
         if (not_exist(pids_file)) {
             return std::set<pid_t>();
         }
@@ -114,6 +116,9 @@ namespace aucont
 
     void set_aucont_root(std::string root_dir)
     {
+        if (root_dir[root_dir.length() - 1] == '/') {
+            root_dir = root_dir.substr(0, root_dir.length() - 1);
+        }
         aucont_dir = root_dir;
         pids_file = aucont_dir + "/containers";
         cgrouph_dir = aucont_dir + "/cgrouph";

@@ -414,7 +414,7 @@ namespace aucont
         read_from_pipe<bool>(from_cont_pipe_fds[0]);
         close(from_cont_pipe_fds[0]);
 
-        if (!aucont::add_container_pid(cont_pid)) {
+        if (!add_container(container_t(cont_pid, opts.cpu_perc))) {
             error("Container with pid: " + std::to_string(cont_pid) + " is already running");
         }
         std::cout << cont_pid << std::endl;
@@ -431,6 +431,6 @@ namespace aucont
         if (wait(NULL) < 0) {
             stdlib_error("wait failed");
         }
-        aucont::del_container_pid(cont_pid);
+        aucont::del_container(cont_pid);
     }
 }

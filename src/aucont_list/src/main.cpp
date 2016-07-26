@@ -28,9 +28,9 @@ int main(int argc, char* argv[]) {
     // preparing aucont common resources path
     aucont::set_aucont_root(aucont::get_file_real_dir(argv[0]));
 
-    auto pids = aucont::get_containers_pids();
-    for (auto pid : pids) {
-        std::cout << pid << std::endl;
+    auto conts = aucont::get_containers();
+    for (auto cont : conts) {
+        std::cout << cont.pid << std::endl;
     }
     (void) argc;
     return 0;

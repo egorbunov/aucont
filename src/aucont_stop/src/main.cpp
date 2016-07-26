@@ -29,8 +29,7 @@ int main(int argc, char* argv[]) {
         signum = atoi(argv[2]);
     }
 
-    auto pids = aucont::get_containers_pids();
-    if (pids.find(pid) == pids.end()) {
+    if (aucont::get_container(pid).pid == -1) {
         aucont::error("No container with pid [ " + std::to_string(pid) + " ]");
     }
 

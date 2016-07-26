@@ -10,7 +10,7 @@
 #include <cstring>
 #include <cstring>
 #include <csignal>
-
+#include <cstdint>
 
 namespace aucont
 {
@@ -19,7 +19,6 @@ namespace aucont
         std::string aucont_dir = ".";
         std::string pids_file = aucont_dir + "/containers";
         std::string cgrouph_dir = aucont_dir + "/cgrouph";
-
 
         bool not_exist(std::string filename) {
             struct stat st;
@@ -45,7 +44,7 @@ namespace aucont
         /**
          * rewrites pids_file completely with given set of pids
          */
-        void write_containters_pids(std::set<pid_t> pids)
+        void write_containters(const std::set<container_t>& conts)
         {
             prepare();
             std::ofstream out(pids_file.c_str(), std::ios_base::trunc | std::ios_base::out | std::ios_base::binary);
@@ -54,8 +53,8 @@ namespace aucont
                 ss << "Can't open file with containers pids for write [ " << strerror(errno) << " ]";
                 throw std::runtime_error(ss.str());
             }
-            for (pid_t pid : pids) {
-                out.write(reinterpret_cast<char*>(&pid), sizeof(pid_t) / sizeof(char));
+            for (auto& cont : conts) {
+                out.write(reinterpret_cast<const char*>(&cont), sizeof(container_t) / sizeof(char));
             }
             out.flush();
             out.close();
@@ -77,51 +76,67 @@ namespace aucont
         return pids_file;
     }
 
-    std::set<pid_t> get_containers_pids()
+    std::set<container_t> get_containers()
     {
         if (not_exist(pids_file)) {
-            return std::set<pid_t>();
+            return std::set<container_t>();
         }
-
         std::ifstream in(pids_file.c_str(), std::ios_base::in | std::ios_base::binary);
         if (in.fail()) {
             std::stringstream ss;
-            ss << "Can't open file with containers pids for read [ " << strerror(errno) << " ]";
+            ss << "Can't open file with containers info for read [ " << strerror(errno) << " ]";
             throw std::runtime_error(ss.str());
         }
-        std::set<pid_t> pids;
-        pid_t pid;
+        std::set<container_t> conts;
+        container_t cont;
 
-        while (in.read(reinterpret_cast<char*>(&pid), sizeof(pid_t) / sizeof(char))) {
-            if (!is_proc_dead(pid)) {
-                pids.insert(pid);
+        while (in.read(reinterpret_cast<char*>(&cont), sizeof(container_t) / sizeof(char))) {
+            if (!is_proc_dead(cont.pid)) {
+                conts.insert(cont);
             }
         }
-        write_containters_pids(pids);
-        return pids;
+        write_containters(conts);
+        return conts;
     }
 
-    bool add_container_pid(pid_t pid)
+    container_t get_container(pid_t pid)
     {
-        auto pids = get_containers_pids();
-        if (pids.count(pid)) {
+        auto conts = get_containers();
+        auto it = conts.find(container_t(pid));
+        if (it == conts.end()) {
+            return container_t();
+        } else {
+            return *it;
+        }
+    }
+
+    bool add_container(const container_t& cont)
+    {
+        auto conts = get_containers();
+        auto sz = conts.size();
+        conts.insert(cont);
+        if (sz == conts.size()) {
             return false;
-        } 
-        pids.insert(pid);
-        write_containters_pids(pids);
+        }
+        write_containters(conts);
         return true;
     }
 
-    bool del_container_pid(pid_t pid)
+    bool del_container(pid_t pid)
     {
-        auto pids = get_containers_pids();
-        auto it = pids.find(pid);
-        if (it == pids.end()) {
+        auto conts = get_containers();
+        auto it = conts.find(container_t(pid));
+        if (it == conts.end()) {
             return false;
         } 
-        pids.erase(it);
-        write_containters_pids(pids);
+        conts.erase(it);
+        write_containters(conts);
         return true;
+    }
+
+    std::string get_cgroup_for_cpuperc(int cpu_perc)
+    {
+        return "cpu_restricted_" + std::to_string(cpu_perc);
     }
 
     void set_aucont_root(std::string root_dir)

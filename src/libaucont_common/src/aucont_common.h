@@ -1,23 +1,44 @@
 #include <string>
 #include <set>
+#include <cstdint>
+#include <vector>
 #include <sys/types.h>
 
 namespace aucont
 {
-    /**
-     * writes given PID to pids_file if PID not exists there already 
-     */
-    bool add_container_pid(pid_t pid);
+    struct container_t
+    {
+        pid_t pid;
+        uint8_t cpu_perc;
+
+        container_t(pid_t pid = -1, uint8_t cpu_perc = 100): pid(pid), cpu_perc(cpu_perc) 
+        {}
+
+        bool operator<(const container_t& other) const
+        {
+            return pid < other.pid;
+        }
+
+        bool operator==(const container_t& other) const
+        {
+            return pid == other.pid;
+        }
+    };
 
     /**
-     * deletes given PID from pids_file if it exists
+     * writes given container info to file  
      */
-    bool del_container_pid(pid_t pid);
+    bool add_container(const container_t& cont);
 
     /**
-     * reads pids set from pids_file
+     * deletes given PID from file with container info, 
+     * if it (container with such pid) exists
      */
-    std::set<pid_t> get_containers_pids();    
+    bool del_container(pid_t pid); 
+
+    container_t get_container(pid_t pid);
+    
+    std::set<container_t> get_containers();
 
     /**
      * returns root path of cgroup hierarchy, which is mounted by aucont_start util
@@ -35,6 +56,14 @@ namespace aucont
      */
     void set_aucont_root(std::string root_dir);
 
+    /**
+     * returns name of cgroup (folder, only top level) for given cpu_perc
+     * need for more convenient way of using cgroup names for containers 
+     * in aucont utils
+     */
+    std::string get_cgroup_for_cpuperc(uint8_t cpu_perc);
+
+    // utility stuff
     /**
      * returns full absolute path to directory, where given file points
      * @param  file_path path to file

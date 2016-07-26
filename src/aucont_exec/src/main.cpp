@@ -21,6 +21,20 @@ namespace
         std::cout << "    CMD - command to run inside container" << std::endl;
         std::cout << "    ARGS - arguments for CMD" << std::endl;
     }
+
+    void unshare_ns(std::string ns, std::string pid_str)
+    {
+        auto f = "/proc/" + pid_str + "/ns/" + ns;
+        int fd = open(f.c_str(), O_RDONLY);
+        if (fd < 0) {
+            aucont::stdlib_error("Can't open ns fd [ " + f + " ]");
+        }
+        if (setns(fd, 0) < 0) {
+            close(fd);
+            aucont::stdlib_error("Can't set ns: " + ns);
+        }
+        close(fd);
+    }
 }
 
 
@@ -33,39 +47,62 @@ int main(int argc, char* argv[]) {
     auto script = exe_path + "aucont_exec.bash";
 
     // reading arguments
-    std::string pids = std::string(argv[1]);
-    std::string cmd = "";
+    std::string pid_str = std::string(argv[1]);
+    char* cmd = argv[2];
+    char* args[100]; // 100 - magic cmd arg maximum
     for (int j = 2; j < argc; ++j) {
-        cmd += std::string(argv[j]);
-        if (j != argc - 1) cmd += " ";
+        args[j - 2] = argv[j];
+    }
+    args[argc - 2] = NULL;
+
+    // loading container info
+    auto cont = aucont::get_container(stoi(pid_str));
+    if (cont.pid == -1) {
+        aucont::error("No container running with pid (invalid pid) = " + pid_str);
     }
 
-    // applying namespaces
-    std::array<std::string, 6> nss = {"user", "net", "ipc", "uts", "pid", "mnt"}; // order is crucial
-    for (auto ns : nss) {
-        auto f = "/proc/" + pids + "/ns/" + ns;
-        int fd = open(f.c_str(), O_RDONLY);
-        if (fd < 0) {
-            aucont::stdlib_error("Can't open ns fd [ " + f + " ]");
-        }
-        if (setns(fd, 0) < 0) {
-            aucont::stdlib_error("Can't set ns: " + ns);
-        }
-        close(fd);
+
+    // applying user and pid namespace and forking first
+    // user first because it sets proper permissions for next unshare
+    unshare_ns("user", pid_str); 
+    unshare_ns("pid", pid_str);
+
+    int pipefd[2];
+    if (pipe2(pipefd, O_CLOEXEC) != 0) {
+        aucont::stdlib_error("Unable to open pipe");
     }
 
     auto pid = fork();
     if (pid < 0) {
         aucont::stdlib_error("Fork failed");
     } else if (pid > 0) {
+        if (close(pipefd[0]) != 0) aucont::stdlib_error("close pipe");
+
+        // configuring cgroup for child
+        
+        // synch with child
+        aucont::write_to_pipe(pipefd[1], true);
+        if (close(pipefd[1]) != 0) aucont::stdlib_error("close pipe");
         if (waitpid(pid, NULL, 0) < 0) {
             aucont::stdlib_error("Waitpid failed");
         }
-        return 0;
+        exit(0);
+    }
+    if (close(pipefd[1]) != 0) aucont::stdlib_error("close pipe");
+
+    // applying other namespaces
+    std::array<std::string, 4> nss = {"net", "ipc", "uts", "mnt"}; // order is crucial
+    for (auto ns : nss) {
+        unshare_ns(ns, pid_str);
     }
 
-    // running command
-    system(cmd.c_str());
+    // synch...
+    aucont::read_from_pipe<bool>(pipefd[0]);
+    if (close(pipefd[0]) != 0) aucont::stdlib_error("close pipe");
+
+    if (execvp(cmd, args) < 0) {
+        aucont::stdlib_error("exec failed");
+    }
 
     return 0;
 }

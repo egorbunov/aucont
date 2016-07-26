@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <vector>
 #include <sys/types.h>
+#include <type_traits>
+#include <unistd.h>
 
 namespace aucont
 {
@@ -85,4 +87,40 @@ namespace aucont
      * prints messege with added errno description and exit(1)
      */
     void stdlib_error(std::string msg);
+
+        template<typename T>
+    typename std::enable_if<std::is_pod<T>::value, T>::type read_from_pipe(int fd)
+    {
+        char buf[sizeof(T)];
+        memset(buf, 0, sizeof(T));
+        size_t offset = 0;
+        while (offset != sizeof(T)) {
+            ssize_t ret = read(fd, buf + offset, sizeof(T) - offset);
+            if (ret < 0) {
+                stdlib_error("Can't read from pipe");
+            }
+            if (ret == 0) {
+                error("pipe read returned 0");
+            }
+            offset += ret;
+        }
+        return *reinterpret_cast<T*>(buf);
+    }
+
+    template<typename T>
+    typename std::enable_if<std::is_pod<T>::value>::type write_to_pipe(int fd, T data)
+    {
+        void* buf = reinterpret_cast<void*>(&data);
+        size_t count = sizeof(T);
+        while (count > 0) {
+            ssize_t ret = write(fd, buf, count);
+            if (ret <= 0) {
+                stdlib_error("Can't write to pipe");
+            }
+            count -= ret;
+            if (count > 0) {
+                buf = reinterpret_cast<void*>(reinterpret_cast<char*>(buf) + ret);
+            }
+        }
+    }
 }

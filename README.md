@@ -1,3 +1,3 @@
 # aucont
 
-Set of utils which provides container creation (very^10 simplified docker).
+Set of utils (for linux) that provide container creation (very^10 simplified docker).

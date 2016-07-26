@@ -1,6 +1,6 @@
 #include <iostream>
 #include <sstream>
-#include <aucont_file.h>
+#include <aucont_common.h>
 #include <iomanip>
 #include <csignal>
 #include <stdexcept>
@@ -21,25 +21,29 @@
 //         }
 //         std::cout << std::left << std::setw(20) << std::setfill(' ') << status;
 //         std::cout << std::endl;
-//     }
+//     }0
 // }
 
+namespace
+{
+    bool is_proc_dead(pid_t pid)
+    {
+        return kill(pid, 0) == -1 && errno == ESRCH;
+    }
+}
+
 int main(int argc, char* argv[]) {
-    (void) argc;
-    char path_to_exe[1000];
-    realpath(argv[0], path_to_exe);
-    auto exe_path = std::string(path_to_exe);
-    exe_path = exe_path.substr(0, exe_path.find_last_of("/")) + "/";
     // preparing aucont common resources path
-    aucont::set_aucont_root(exe_path);
+    aucont::set_aucont_root(aucont::get_file_real_dir(argv[0]));
 
     auto pids = aucont::get_containers_pids();
     for (auto pid : pids) {
-        if (kill(pid, 0) == 0) {
+        if (!is_proc_dead(pid)) {
             std::cout << pid << std::endl;
-	    } else if (errno == ESRCH) {
+        } else {
             aucont::del_container_pid(pid);
         }
     }
+    (void) argc;
     return 0;
 }

@@ -1,6 +1,6 @@
 #include <iostream>
 #include <sstream>
-#include <aucont_file.h>
+#include <aucont_common.h>
 #include <vector>
 #include <string>
 #include <cstring>
@@ -41,7 +41,7 @@ namespace
         aucont::options opts;
         for (int i = 1; i < argc; ++i) {
             if ((!std::strcmp(argv[i], "--cpu") || !std::strcmp(argv[i], "--net")) && i + 1 >= argc) {
-                throw std::runtime_error("No arguments specified for some options");
+                aucont::error("No arguments specified for some options");
             }
 
             if (!std::strcmp(argv[i], "-d")) {
@@ -59,7 +59,7 @@ namespace
                 }
                 opts.ip = argv[++i];
             } else {
-                opts.fsimg_path = argv[i++];
+                opts.fsimg_path = aucont::get_real_path(argv[i++]);
                 opts.cmd = argv[i++];
                 opts.args[0] = opts.cmd;
                 for (int j = 0; j < argc - i; ++j) {
@@ -71,6 +71,9 @@ namespace
         }
 
         // validating
+        if (opts.fsimg_path.empty()) {
+            throw std::runtime_error("No image path specified");
+        }
         if (opts.cmd == nullptr) {
             throw std::runtime_error("No command specified to run inside container");
         }
@@ -103,18 +106,9 @@ int main(int argc, const char* argv[])
         print_usage();
         return 0;
     }
-    // std::cout << "Starting container with options: " << std::endl;
-    // print_options(opts);
 
-    // determining exe path for correct scripts usage and ...
-    char path_to_exe[1000];
-    realpath(argv[0], path_to_exe);
-    auto exe_path = std::string(path_to_exe);
-    exe_path = exe_path.substr(0, exe_path.find_last_of("/")) + "/";
-
-    // preparing aucont common resources path
+    auto exe_path = aucont::get_file_real_dir(argv[0]);
     aucont::set_aucont_root(exe_path);
-
     aucont::start_container(opts, exe_path);
 
     return 0;

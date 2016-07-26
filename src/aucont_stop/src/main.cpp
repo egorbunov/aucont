@@ -2,27 +2,30 @@
 #include <sstream>
 #include <string>
 #include <stdexcept>
-#include <aucont_file.h>
+#include <aucont_common.h>
 #include <sys/types.h>
-#include <signal.h>
+#include <csignal>
 #include <cstring>
 #include <cerrno>
 
-void print_usage() {
-    std::cout << "USAGE: ./aucont_stop PID [SIGNUM]" << std::endl;
+namespace
+{
+    bool is_proc_dead(pid_t pid)
+    {
+        return kill(pid, 0) == -1 && errno == ESRCH;
+    }
+
+    void print_usage() {
+        std::cout << "USAGE: ./aucont_stop PID [SIGNUM]" << std::endl;
+    }
 }
 
 int main(int argc, char* argv[]) {
-    char path_to_exe[1000];
-    realpath(argv[0], path_to_exe);
-    auto exe_path = std::string(path_to_exe);
-    exe_path = exe_path.substr(0, exe_path.find_last_of("/")) + "/";
-    // preparing aucont common resources path
-    aucont::set_aucont_root(exe_path);
+    aucont::set_aucont_root(aucont::get_file_real_dir(argv[0]));
 
     if (argc < 2 || argc > 3) {
         print_usage();
-        return 0;
+        exit(1);
     }
 
     pid_t pid = atoi(argv[1]);
@@ -32,18 +35,18 @@ int main(int argc, char* argv[]) {
     }
 
     auto pids = aucont::get_containers_pids();
-    if (pids.find(pid) != pids.end() && kill(pid, 0) < 0 && errno == ESRCH) {
-        aucont::del_container_pid(pid);
-        return 0;
+    if (pids.find(pid) == pids.end()) {
+        aucont::error("No container with pid [ " + std::to_string(pid) + " ]");
     } 
 
-    std::cout << "SIGNAL = " << signum << std::endl;
-
     if (kill(pid, signum) < 0) {
-        throw std::runtime_error("Can't send signal [ " + std::string(strerror(errno)) + " ] ");
+        aucont::stdlib_error("Can't send signal");
     }
 
-    std::cout << pid << std::endl;
-    
+    if (is_proc_dead(pid)) {
+        aucont::del_container_pid(pid);
+    }
+
+    // std::cout << "OK" << std::endl;
     return 0;
 }

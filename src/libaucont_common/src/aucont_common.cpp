@@ -1,4 +1,4 @@
-#include "aucont_file.h"
+#include "aucont_common.h"
 
 #include <unistd.h>
 #include <sys/stat.h>
@@ -7,6 +7,7 @@
 #include <iostream>
 #include <sstream>
 #include <cerrno>
+#include <cstring>
 #include <cstring>
 
 
@@ -45,7 +46,6 @@ namespace aucont
          */
         void write_containters_pids(std::set<pid_t> pids)
         {
-            // std::cout << "FILE: " << pids_file << std::endl;
             prepare();
             std::ofstream out(pids_file.c_str(), std::ios_base::trunc | std::ios_base::out | std::ios_base::binary);
             if (out.fail()) {
@@ -56,6 +56,7 @@ namespace aucont
             for (pid_t pid : pids) {
                 out.write(reinterpret_cast<char*>(&pid), sizeof(pid_t) / sizeof(char));
             }
+            out.flush();
             out.close();
         }
     }
@@ -72,7 +73,6 @@ namespace aucont
 
     std::set<pid_t> get_containers_pids()
     {
-        // std::cout << "FILE: " << pids_file << std::endl;
         if (not_exist(pids_file)) {
             return std::set<pid_t>();
         }
@@ -122,6 +122,36 @@ namespace aucont
         aucont_dir = root_dir;
         pids_file = aucont_dir + "/containers";
         cgrouph_dir = aucont_dir + "/cgrouph";
+    }
+
+    std::string get_real_path(std::string file_path)
+    {
+        char path_to_file[1000];
+        if (realpath(file_path.c_str(), path_to_file) == NULL) {
+            throw std::runtime_error("Can't get real path");
+        }
+        return std::string(path_to_file);
+    }
+
+    std::string get_file_real_dir(std::string file_path)
+    {
+        std::string path = get_real_path(file_path);
+        path = path.substr(0, path.find_last_of("/")) + "/";
+        return path;
+    }
+
+    void error(std::string msg)
+    {
+        std::cerr << "ERROR: " << msg << std::endl;
+        exit(1);
+    }
+
+    void stdlib_error(std::string msg)
+    {
+        std::stringstream ss;
+        ss << "ERROR: " << msg << " [ " << strerror(errno) << " ]";
+        std::cerr << ss.str() << std::endl;
+        exit(1);
     }
 }
 

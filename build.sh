@@ -3,7 +3,7 @@
 mkdir -p bin
 cd src
 
-cd libaucont_file
+cd libaucont_common
 pwd
 echo ============ Building libaucont_file ============
 make clean all

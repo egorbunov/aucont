@@ -2,8 +2,8 @@ BIN_NAME = aucont_start
 BIN_REL_DIR = ../../bin
 BIN_DIR = $(realpath $(BIN_REL_DIR))
 CXX = g++
-CXX_FLAGS = -std=c++11 -Wall -Werror -Wextra -pedantic-errors -I../libaucont_file/src
-LD_FLAGS = -L$(BIN_DIR) -laucont_file -Wl,-rpath=$(BIN_DIR)
+CXX_FLAGS = -std=c++11 -Wall -Werror -Wextra -pedantic-errors -I../libaucont_common/src
+LD_FLAGS = -L$(BIN_DIR) -laucont_common -Wl,-rpath=$(BIN_DIR)
 SRC_EXT = cpp
 SRC_PATH = src
 SCRIPTS_PATH = scripts

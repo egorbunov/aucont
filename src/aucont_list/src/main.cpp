@@ -24,25 +24,13 @@
 //     }0
 // }
 
-namespace
-{
-    bool is_proc_dead(pid_t pid)
-    {
-        return kill(pid, 0) == -1 && errno == ESRCH;
-    }
-}
-
 int main(int argc, char* argv[]) {
     // preparing aucont common resources path
     aucont::set_aucont_root(aucont::get_file_real_dir(argv[0]));
 
     auto pids = aucont::get_containers_pids();
     for (auto pid : pids) {
-        if (!is_proc_dead(pid)) {
-            std::cout << pid << std::endl;
-        } else {
-            aucont::del_container_pid(pid);
-        }
+        std::cout << pid << std::endl;
     }
     (void) argc;
     return 0;

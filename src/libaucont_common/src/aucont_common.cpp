@@ -9,6 +9,7 @@
 #include <cerrno>
 #include <cstring>
 #include <cstring>
+#include <csignal>
 
 
 namespace aucont
@@ -59,6 +60,11 @@ namespace aucont
             out.flush();
             out.close();
         }
+
+        bool is_proc_dead(pid_t pid)
+        {
+            return kill(pid, 0) == -1 && errno == ESRCH;
+        }
     }
 
     std::string get_cgrouph_path() 
@@ -85,9 +91,13 @@ namespace aucont
         }
         std::set<pid_t> pids;
         pid_t pid;
+
         while (in.read(reinterpret_cast<char*>(&pid), sizeof(pid_t) / sizeof(char))) {
-            pids.insert(pid);
+            if (!is_proc_dead(pid)) {
+                pids.insert(pid);
+            }
         }
+        write_containters_pids(pids);
         return pids;
     }
 

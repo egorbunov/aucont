@@ -10,11 +10,6 @@
 
 namespace
 {
-    bool is_proc_dead(pid_t pid)
-    {
-        return kill(pid, 0) == -1 && errno == ESRCH;
-    }
-
     void print_usage() {
         std::cout << "USAGE: ./aucont_stop PID [SIGNUM]" << std::endl;
     }
@@ -37,16 +32,11 @@ int main(int argc, char* argv[]) {
     auto pids = aucont::get_containers_pids();
     if (pids.find(pid) == pids.end()) {
         aucont::error("No container with pid [ " + std::to_string(pid) + " ]");
-    } 
+    }
 
     if (kill(pid, signum) < 0) {
         aucont::stdlib_error("Can't send signal");
     }
 
-    if (is_proc_dead(pid)) {
-        aucont::del_container_pid(pid);
-    }
-
-    // std::cout << "OK" << std::endl;
     return 0;
 }

@@ -1,13 +1,14 @@
 #! /bin/bash
 
-if [ "$#" -ne 3 ]; then
+if [ "$#" -ne 4 ]; then
     exit 1 # wrong number of arguments
 fi
 
 CPU_PERC=$1
 CONT_PID=$2
 CGROUP_HIERARCHY_DIR=$3
-CPU_CGROUP_DIR=${CGROUP_HIERARCHY_DIR}/cpu_restricted_${CPU_PERC}
+CGROUP_NAME=$4
+CPU_CGROUP_DIR=${CGROUP_HIERARCHY_DIR}/${CGROUP_NAME}
 
 # cheking if there already exists cgroup hierarchy with cpu subsystem attached
 CPU_MOUNT_OPTS=$(mount \
@@ -33,6 +34,6 @@ MAX_PERIOD=1000000
 mkdir -p "$CPU_CGROUP_DIR" && \
 echo $MAX_PERIOD > ${CPU_CGROUP_DIR}/cpu.cfs_period_us && \
 echo $(($CPU_PERC * $MAX_PERIOD / 100)) > ${CPU_CGROUP_DIR}/cpu.cfs_quota_us && \
-echo $CONT_PID >> ${CPU_CGROUP_DIR}/tasks
+echo $CONT_PID > ${CPU_CGROUP_DIR}/tasks
 
 exit $?

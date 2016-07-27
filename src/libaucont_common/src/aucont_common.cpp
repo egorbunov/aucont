@@ -134,9 +134,9 @@ namespace aucont
         return true;
     }
 
-    std::string get_cgroup_for_cpuperc(int cpu_perc)
+    std::string get_cgroup_for_cpuperc(uint8_t cpu_perc)
     {
-        return "cpu_restricted_" + std::to_string(cpu_perc);
+        return "cpu_restricted_" + std::to_string((int) cpu_perc);
     }
 
     void set_aucont_root(std::string root_dir)

@@ -71,28 +71,28 @@ namespace aucont
             }
 
             // creating special device files
-            std::vector<std::pair<std::string, bool>> devices = {  std::make_pair("dev/zero", false), 
-                                                                   std::make_pair("dev/null", false), 
-                                                                   std::make_pair("dev/mqueue", true),
-                                                                   std::make_pair("dev/shm", true) };
-            for (auto dev : devices) {
-                std::string from = "/" + dev.first;
-                std::string to = root + dev.first;
-                if (!dev.second) { // not a directory
-                    auto dfd = open(to.c_str(), O_CREAT | O_RDWR, 0777);
-                    if (dfd < 0 ||
-                        close(dfd) < 0) {
-                        stdlib_error("Can't create/open file " + to);
-                    }
-                } else {
-                    if (mkdir(to.c_str(), 0666) < 0 && errno != EEXIST) {
-                        stdlib_error("Can't create dir " + to);
-                    }
-                }
-                if (mount(from.c_str(), to.c_str(), "", MS_BIND, NULL) != 0) {
-                    stdlib_error("Can't bind device " + dev.first);
-                }
-            }
+            // std::vector<std::pair<std::string, bool>> devices = {  std::make_pair("dev/zero", false), 
+            //                                                        std::make_pair("dev/null", false), 
+            //                                                        std::make_pair("dev/mqueue", true),
+            //                                                        std::make_pair("dev/shm", true) };
+            // for (auto dev : devices) {
+            //     std::string from = "/" + dev.first;
+            //     std::string to = root + dev.first;
+            //     if (!dev.second) { // not a directory
+            //         auto dfd = open(to.c_str(), O_CREAT | O_RDWR, 0777);
+            //         if (dfd < 0 ||
+            //             close(dfd) < 0) {
+            //             stdlib_error("Can't create/open file " + to);
+            //         }
+            //     } else {
+            //         if (mkdir(to.c_str(), 0666) < 0 && errno != EEXIST) {
+            //             stdlib_error("Can't create dir " + to);
+            //         }
+            //     }
+            //     if (mount(from.c_str(), to.c_str(), "", MS_BIND, NULL) != 0) {
+            //         stdlib_error("Can't bind device " + dev.first);
+            //     }
+            // }
              
             // changing root
             std::string p_root = root + p_root_dir_name;
@@ -202,7 +202,8 @@ namespace aucont
             std::stringstream cmdss;
             cmdss << "bash " << scripts_path << script << " " 
                   << cpu_perc << " " << cont_pid 
-                  << " \"" << aucont::get_cgrouph_path() << "\""; // path to cgroup hierarchy root
+                  << " \"" << get_cgrouph_path() << "\"" // path to cgroup hierarchy root
+                  << " \"" << get_cgroup_for_cpuperc((uint8_t) cpu_perc) << "\"";
             std::string cmd = cmdss.str();
 
             if (system(cmd.c_str()) != 0) {
@@ -234,6 +235,7 @@ namespace aucont
             out << "deny";
             out.close();
             map_id("/proc/" + std::to_string(cont_pid) + "/uid_map", 0, geteuid());
+            map_id("/proc/" + std::to_string(cont_pid) + "/uid_map", 0, 1000);
             map_id("/proc/" + std::to_string(cont_pid) + "/gid_map", 0, getegid());
         }
 

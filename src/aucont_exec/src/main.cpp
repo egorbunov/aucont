@@ -44,7 +44,7 @@ int main(int argc, char* argv[]) {
     }
     auto exe_path = aucont::get_file_real_dir(argv[0]);
     aucont::set_aucont_root(exe_path);
-    auto script = exe_path + "aucont_exec.bash";
+    auto cgroup_conf_script = exe_path + "apply_cgroup.bash";
 
     // reading arguments
     std::string pid_str = std::string(argv[1]);
@@ -78,7 +78,15 @@ int main(int argc, char* argv[]) {
     } else if (pid > 0) {
         if (close(pipefd[0]) != 0) aucont::stdlib_error("close pipe");
 
-        // configuring cgroup for child
+        // configure cgroup
+        std::stringstream cmdss;
+        cmdss << "bash " << cgroup_conf_script << " " 
+              << cont.pid << " " 
+              << " \"" << aucont::get_cgrouph_path() << "\""; // path to cgroup hierarchy root
+        std::string cmd = cmdss.str();
+        if (system(cmd.c_str()) != 0) {
+            aucont::error("Can't put process to container's cgroup");
+        }
         
         // synch with child
         aucont::write_to_pipe(pipefd[1], true);

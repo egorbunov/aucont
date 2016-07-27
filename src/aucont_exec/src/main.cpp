@@ -61,50 +61,53 @@ int main(int argc, char* argv[]) {
         aucont::error("No container running with pid (invalid pid) = " + cont_pid_str);
     }
 
+    int synch_pipe[2];
+    int get_slave_pid_pipe[2];
+    if (pipe2(get_slave_pid_pipe, O_CLOEXEC) < 0 ||
+        pipe2(synch_pipe, O_CLOEXEC) < 0) {
+        aucont::stdlib_error("pipe");
+    }
+
+    auto tmp_pid = fork();
+    if (tmp_pid < 0) {
+        aucont::stdlib_error("fork");
+    } else if (tmp_pid > 0) {
+        close(get_slave_pid_pipe[1]);
+        close(synch_pipe[0]);
+        auto slave_proc_pid = aucont::read_from_pipe<pid_t>(get_slave_pid_pipe[0]);
+        std::string pid_str = std::to_string(slave_proc_pid);
+        std::string cgrouph_path = aucont::get_cgrouph_path();
+        if (system(("bash " + cgroup_conf_script + " " + cont_pid_str + " " + pid_str + " " + cgrouph_path).c_str()) != 0) {
+            aucont::error("=(");
+        }
+        aucont::write_to_pipe<bool>(synch_pipe[1], true);
+        if (waitpid(tmp_pid, NULL, 0) < 0) {
+            aucont::stdlib_error("Waitpid failed");
+        }
+        exit(1);
+    }
 
     // applying user and pid namespace and forking first
     // user first because it sets proper permissions for next unshare
     unshare_ns("user", cont_pid_str); 
     unshare_ns("pid", cont_pid_str);
 
-    int pipefd[2];
-    if (pipe2(pipefd, O_CLOEXEC) != 0) {
+    if (pipe2(synch_pipe, O_CLOEXEC) != 0) {
         aucont::stdlib_error("Unable to open pipe");
     }
 
-    auto pid = fork();
-    if (pid < 0) {
+    auto slave_pid = fork();
+    if (slave_pid < 0) {
         aucont::stdlib_error("Fork failed");
-    } else if (pid > 0) {
-        std::cout << "PROCESS IN CONTAINER PID = " << pid << std::endl;
-        std::cout << "THIS PROCESS = " << getpid() << std::endl;
-
-        // unshare_ns("pid", std::to_string(getpid()));
-        if (close(pipefd[0]) != 0) aucont::stdlib_error("close pipe");
-
-
-        std::string pid_str = std::to_string(pid);
-        std::string cgrouph_path = aucont::get_cgrouph_path();
-        char cmd[] = "bash";
-        auto res = execlp(cmd, cmd, 
-                               cgroup_conf_script.c_str(), 
-                               cont_pid_str.c_str(), 
-                               pid_str.c_str(), 
-                               cgrouph_path.c_str(), 
-                               NULL);
-        if (res < 0) {
-            aucont::stdlib_error("Can't put process to container's cgroup");
-        }
-            
-        // synch with child
-        aucont::write_to_pipe(pipefd[1], true);
-        if (close(pipefd[1]) != 0) aucont::stdlib_error("close pipe");
-        if (waitpid(pid, NULL, 0) < 0) {
+    } else if (slave_pid > 0) {
+        // TODO: close pipes
+        aucont::write_to_pipe(get_slave_pid_pipe[1], slave_pid);
+        if (waitpid(slave_pid, NULL, 0) < 0) {
             aucont::stdlib_error("Waitpid failed");
         }
         exit(0);
     }
-    if (close(pipefd[1]) != 0) aucont::stdlib_error("close pipe");
+    // TODO: close pipes
 
     // applying other namespaces
     std::array<std::string, 4> nss = {"net", "ipc", "uts", "mnt"}; // order is crucial
@@ -113,12 +116,10 @@ int main(int argc, char* argv[]) {
     }
 
     // synch...
-    aucont::read_from_pipe<bool>(pipefd[0]);
-    if (close(pipefd[0]) != 0) aucont::stdlib_error("close pipe");
+    aucont::read_from_pipe<bool>(synch_pipe[0]);
 
     if (execvp(cmd, args) < 0) {
         aucont::stdlib_error("exec failed");
     }
-
     return 0;
 }

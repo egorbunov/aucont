@@ -47,7 +47,7 @@ int main(int argc, char* argv[]) {
     auto cgroup_conf_script = exe_path + "apply_cgroup.bash";
 
     // reading arguments
-    std::string pid_str = std::string(argv[1]);
+    std::string cont_pid_str = std::string(argv[1]);
     char* cmd = argv[2];
     char* args[100]; // 100 - magic cmd arg maximum
     for (int j = 2; j < argc; ++j) {
@@ -56,16 +56,16 @@ int main(int argc, char* argv[]) {
     args[argc - 2] = NULL;
 
     // loading container info
-    auto cont = aucont::get_container(stoi(pid_str));
+    auto cont = aucont::get_container(stoi(cont_pid_str));
     if (cont.pid == -1) {
-        aucont::error("No container running with pid (invalid pid) = " + pid_str);
+        aucont::error("No container running with pid (invalid pid) = " + cont_pid_str);
     }
 
 
     // applying user and pid namespace and forking first
     // user first because it sets proper permissions for next unshare
-    unshare_ns("user", pid_str); 
-    unshare_ns("pid", pid_str);
+    unshare_ns("user", cont_pid_str); 
+    unshare_ns("pid", cont_pid_str);
 
     int pipefd[2];
     if (pipe2(pipefd, O_CLOEXEC) != 0) {
@@ -76,18 +76,26 @@ int main(int argc, char* argv[]) {
     if (pid < 0) {
         aucont::stdlib_error("Fork failed");
     } else if (pid > 0) {
+        std::cout << "PROCESS IN CONTAINER PID = " << pid << std::endl;
+        std::cout << "THIS PROCESS = " << getpid() << std::endl;
+
+        // unshare_ns("pid", std::to_string(getpid()));
         if (close(pipefd[0]) != 0) aucont::stdlib_error("close pipe");
 
-        // configure cgroup
-        std::stringstream cmdss;
-        cmdss << "bash " << cgroup_conf_script << " " 
-              << cont.pid << " " 
-              << " \"" << aucont::get_cgrouph_path() << "\""; // path to cgroup hierarchy root
-        std::string cmd = cmdss.str();
-        if (system(cmd.c_str()) != 0) {
-            aucont::error("Can't put process to container's cgroup");
+
+        std::string pid_str = std::to_string(pid);
+        std::string cgrouph_path = aucont::get_cgrouph_path();
+        char cmd[] = "bash";
+        auto res = execlp(cmd, cmd, 
+                               cgroup_conf_script.c_str(), 
+                               cont_pid_str.c_str(), 
+                               pid_str.c_str(), 
+                               cgrouph_path.c_str(), 
+                               NULL);
+        if (res < 0) {
+            aucont::stdlib_error("Can't put process to container's cgroup");
         }
-        
+            
         // synch with child
         aucont::write_to_pipe(pipefd[1], true);
         if (close(pipefd[1]) != 0) aucont::stdlib_error("close pipe");
@@ -101,7 +109,7 @@ int main(int argc, char* argv[]) {
     // applying other namespaces
     std::array<std::string, 4> nss = {"net", "ipc", "uts", "mnt"}; // order is crucial
     for (auto ns : nss) {
-        unshare_ns(ns, pid_str);
+        unshare_ns(ns, cont_pid_str);
     }
 
     // synch...

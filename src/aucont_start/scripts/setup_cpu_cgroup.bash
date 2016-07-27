@@ -34,6 +34,6 @@ MAX_PERIOD=1000000
 mkdir -p "$CPU_CGROUP_DIR" && \
 echo $MAX_PERIOD > ${CPU_CGROUP_DIR}/cpu.cfs_period_us && \
 echo $(($CPU_PERC * $MAX_PERIOD / 100)) > ${CPU_CGROUP_DIR}/cpu.cfs_quota_us && \
-echo $CONT_PID > ${CPU_CGROUP_DIR}/tasks
+echo $CONT_PID >> ${CPU_CGROUP_DIR}/tasks
 
 exit $?

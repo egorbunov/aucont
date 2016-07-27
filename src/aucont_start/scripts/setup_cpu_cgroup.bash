@@ -24,7 +24,7 @@ if [ -z "$(mount | grep "$CGROUP_HIERARCHY_DIR")" ]; then
     mkdir -p "$CGROUP_HIERARCHY_DIR" && \
     mount -t cgroup -o"$CPU_MOUNT_OPTS" aucont_cgrouph "$CGROUP_HIERARCHY_DIR"
     if [ "$?" -ne "0" ]; then
-        exit $? # error mounting
+        exit 2 # error mounting
     fi
 fi
 

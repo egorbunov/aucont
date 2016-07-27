@@ -10,7 +10,7 @@
 #include <fcntl.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-
+#include <utility>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -63,7 +63,38 @@ namespace aucont
             if (mount(NULL, procfs_path.c_str(), "proc", MS_NOSUID | MS_NOEXEC | MS_NODEV, NULL) != 0) {
                 stdlib_error("Can't mount procfs to " + procfs_path);
             }
+
+            // mounting sysfs
+            std::string sysfs_path = root + "sys";
+            if (mount(NULL, sysfs_path.c_str(), "sysfs", MS_NOSUID | MS_NOEXEC | MS_NODEV, NULL) != 0) {
+                stdlib_error("Can't mount sysfs to " + sysfs_path);
+            }
+
+            // creating special device files
+            std::vector<std::pair<std::string, bool>> devices = {  std::make_pair("dev/zero", false), 
+                                                                   std::make_pair("dev/null", false), 
+                                                                   std::make_pair("dev/mqueue", true),
+                                                                   std::make_pair("dev/shm", true) };
+            for (auto dev : devices) {
+                std::string from = "/" + dev.first;
+                std::string to = root + dev.first;
+                if (!dev.second) { // not a directory
+                    auto dfd = open(to.c_str(), O_CREAT | O_RDWR, 0777);
+                    if (dfd < 0 ||
+                        close(dfd) < 0) {
+                        stdlib_error("Can't create/open file " + to);
+                    }
+                } else {
+                    if (mkdir(to.c_str(), 0666) < 0 && errno != EEXIST) {
+                        stdlib_error("Can't create dir " + to);
+                    }
+                }
+                if (mount(from.c_str(), to.c_str(), "", MS_BIND, NULL) != 0) {
+                    stdlib_error("Can't bind device " + dev.first);
+                }
+            }
              
+            // changing root
             std::string p_root = root + p_root_dir_name;
             struct stat st;
             if (stat(p_root.c_str(), &st) != 0) {
@@ -179,28 +210,31 @@ namespace aucont
             }
         }
 
-        void map_id(const char *file, uint32_t from, uint32_t to)
+        void map_id(std::string file, uint32_t from, uint32_t to)
         {
             std::string str = std::to_string(from) + " " + std::to_string(to) + " 1";
             std::ofstream out(file);
             if (!out) {
-                error("Can't open file " + std::string(file));
+                error("Can't open file " + file);
             }
             out << str;
         }
 
-        void setup_user(uid_t uid, gid_t gid)
+        /**
+         * called from host
+         */
+        void setup_user_in_container(pid_t cont_pid)
         {
             // comment stolen from unshare sources
             /* since Linux 3.19 unprivileged writing of /proc/self/gid_map
              * has s been disabled unless /proc/self/setgroups is written
              * first to permanently disable the ability to call setgroups
              * in that user namespace. */
-            std::ofstream out("/proc/self/setgroups");
+            std::ofstream out("/proc/" + std::to_string(cont_pid) + "/setgroups");
             out << "deny";
             out.close();
-            map_id("/proc/self/uid_map", 0, uid);
-            map_id("/proc/self/gid_map", 0, gid);
+            map_id("/proc/" + std::to_string(cont_pid) + "/uid_map", 0, geteuid());
+            map_id("/proc/" + std::to_string(cont_pid) + "/gid_map", 0, getegid());
         }
 
         void setup_uts()
@@ -263,12 +297,6 @@ namespace aucont
                     stdlib_error("can't cleanup fds in child process");
                 }
             }
-            
-            // reading creators uid and gid from pipe
-            uid_t uid = read_from_pipe<uid_t>(params.in_pipe_fd);
-            gid_t gid = read_from_pipe<gid_t>(params.in_pipe_fd);
-            setup_user(uid, gid);
-            setup_uts();
 
             if (opts.daemonize) {
                 daemonize();
@@ -278,7 +306,6 @@ namespace aucont
             if (unshare(CLONE_NEWPID) < 0) {
                 stdlib_error("can't unshare pid ns");
             }
-
             int pipefd[2];
             if (pipe2(pipefd, O_CLOEXEC) != 0) {
                 stdlib_error("Can't open pipe to transfer container pid");
@@ -292,18 +319,20 @@ namespace aucont
                     close(params.out_pipe_fd) < 0) {
                     stdlib_error("fail closing fds");
                 }
-                write_to_pipe(pipefd[1], pid);
+                write_to_pipe(pipefd[1], pid); // sending container pid to container (as seen from host)
                 if (close(pipefd[1]) < 0) stdlib_error("fail closing pipe fd");
                 if (waitpid(pid, NULL, 0) < 0) {
                     stdlib_error("waitpid failed for pid " + std::to_string(pid));
                 }
                 exit(0);
             }
-
             // final container process continues here
             pid_t cont_pid = read_from_pipe<pid_t>(pipefd[0]);
+            // sending container pid to host
             write_to_pipe(params.out_pipe_fd, cont_pid);
-
+            // wait for host configures user mappings for container
+            read_from_pipe<bool>(params.in_pipe_fd);
+            setup_uts();
             if (!opts.ip.empty()) {
                 read_from_pipe<bool>(params.in_pipe_fd);
                 setup_net_cont(opts.ip, cont_pid);
@@ -355,12 +384,12 @@ namespace aucont
         close(to_cont_pipe_fds[0]);
         close(from_cont_pipe_fds[1]);
 
-        // sending uid and gid
-        write_to_pipe(to_cont_pipe_fds[1], geteuid());
-        write_to_pipe(to_cont_pipe_fds[1], getegid());
-
         // waiting for container starting proc to send us container PID
         auto cont_pid = read_from_pipe<pid_t>(from_cont_pipe_fds[0]);
+
+        // setting up user
+        setup_user_in_container(cont_pid);
+        write_to_pipe(to_cont_pipe_fds[1], true); // synch
 
         // setting up networking if needed (host part)
         if (!opts.ip.empty()) {

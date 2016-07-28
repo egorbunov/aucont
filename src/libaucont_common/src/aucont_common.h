@@ -88,7 +88,7 @@ namespace aucont
      */
     void stdlib_error(std::string msg);
 
-        template<typename T>
+    template<typename T>
     typename std::enable_if<std::is_pod<T>::value, T>::type read_from_pipe(int fd)
     {
         char buf[sizeof(T)];

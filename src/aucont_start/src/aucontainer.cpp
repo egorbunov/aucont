@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <fstream>
 #include <vector>
+#include <tuple>
 
 #include <aucont_common.h>
 
@@ -41,6 +42,21 @@ namespace aucont
             : opts(opts), in_pipe_fd(in_pipe_fd), out_pipe_fd(out_pipe_fd), fds_to_close(fds_to_close)
             {}
         };
+
+        /**
+         * Configures filesystem of container from host side
+         * @param path to container root directory
+         */
+        void setup_fs_host(std::string cont_root)
+        {
+            (void) cont_root;
+            // std::stringstream cmdss;
+            // cmdss << "chown -R " << geteuid() << ":" << getegid() << " " << cont_root;
+            // auto cmd = cmdss.str();
+            // if (system(cmd.c_str()) != 0) {
+            //     aucont::error("Can't setup container root dir permissions");
+            // }
+        }
 
         /**
          * Configure file system inside container
@@ -71,28 +87,28 @@ namespace aucont
             }
 
             // creating special device files
-            // std::vector<std::pair<std::string, bool>> devices = {  std::make_pair("dev/zero", false), 
-            //                                                        std::make_pair("dev/null", false), 
-            //                                                        std::make_pair("dev/mqueue", true),
-            //                                                        std::make_pair("dev/shm", true) };
-            // for (auto dev : devices) {
-            //     std::string from = "/" + dev.first;
-            //     std::string to = root + dev.first;
-            //     if (!dev.second) { // not a directory
-            //         auto dfd = open(to.c_str(), O_CREAT | O_RDWR, 0777);
-            //         if (dfd < 0 ||
-            //             close(dfd) < 0) {
-            //             stdlib_error("Can't create/open file " + to);
-            //         }
-            //     } else {
-            //         if (mkdir(to.c_str(), 0666) < 0 && errno != EEXIST) {
-            //             stdlib_error("Can't create dir " + to);
-            //         }
-            //     }
-            //     if (mount(from.c_str(), to.c_str(), "", MS_BIND, NULL) != 0) {
-            //         stdlib_error("Can't bind device " + dev.first);
-            //     }
-            // }
+            std::vector<std::pair<std::string, bool>> devices = { std::make_pair("dev/zero", false), 
+                                                                  std::make_pair("dev/null", false), 
+                                                                  std::make_pair("dev/mqueue", true),
+                                                                  std::make_pair("dev/shm", true) };
+            for (auto dev : devices) {
+                std::string from = "/" + dev.first;
+                std::string to = root + dev.first;
+                if (!dev.second) { // not a directory
+                    auto dfd = open(to.c_str(), O_CREAT | O_RDWR, 0777);
+                    if (dfd < 0 ||
+                        close(dfd) < 0) {
+                        stdlib_error("Can't create/open file " + to);
+                    }
+                } else { // directory
+                    if (mkdir(to.c_str(), 0666) < 0 && errno != EEXIST) {
+                        stdlib_error("Can't create dir " + to);
+                    }
+                }
+                if (mount(from.c_str(), to.c_str(), "", MS_BIND, NULL) != 0) {
+                    stdlib_error("Can't bind device " + dev.first);
+                }
+            }
              
             // changing root
             std::string p_root = root + p_root_dir_name;
@@ -174,22 +190,22 @@ namespace aucont
 
             const size_t cmd_max_len = 300;
             char cmd[cmd_max_len];
-            sprintf(cmd, "ip link add %s type veth peer name %s", host_veth_name.c_str(), cont_veth_name.c_str());
+            sprintf(cmd, "sudo ip link add %s type veth peer name %s", host_veth_name.c_str(), cont_veth_name.c_str());
             if (system(cmd) != 0) {
                 error("Can't create veth pair");
             }
 
-            sprintf(cmd, "ip link set %s netns %d", cont_veth_name.c_str(), cont_pid);
+            sprintf(cmd, "sudo ip link set %s netns %d", cont_veth_name.c_str(), cont_pid);
             if (system(cmd) != 0) {
                 error("Can't set container veth");
             }
 
-            sprintf(cmd, "ip link set %s up", host_veth_name.c_str());
+            sprintf(cmd, "sudo ip link set %s up", host_veth_name.c_str());
             if (system(cmd) != 0) {
                 error("Can't change host veth state to UP");
             }
 
-            sprintf(cmd, "ip addr add %s dev %s", host_ip.c_str(), host_veth_name.c_str());
+            sprintf(cmd, "sudo ip addr add %s dev %s", host_ip.c_str(), host_veth_name.c_str());
             if (system(cmd) != 0) {
                 error("Can't assign ip to host veth");
             }
@@ -211,14 +227,15 @@ namespace aucont
             }
         }
 
-        void map_id(std::string file, uint32_t from, uint32_t to)
+        void map_id(std::string file, std::vector<std::tuple<uid_t, uid_t, uid_t>> mappings)
         {
-            std::string str = std::to_string(from) + " " + std::to_string(to) + " 1";
             std::ofstream out(file);
             if (!out) {
                 error("Can't open file " + file);
             }
-            out << str;
+            for (auto m : mappings) {
+                out << std::get<0>(m) << " " << std::get<1>(m) << " " << std::get<2>(m) << std::endl;
+            }
         }
 
         /**
@@ -231,12 +248,13 @@ namespace aucont
              * has s been disabled unless /proc/self/setgroups is written
              * first to permanently disable the ability to call setgroups
              * in that user namespace. */
-            std::ofstream out("/proc/" + std::to_string(cont_pid) + "/setgroups");
+            std::string cont_pid_str = std::to_string(cont_pid);
+            std::ofstream out("/proc/" + cont_pid_str + "/setgroups");
             out << "deny";
             out.close();
-            map_id("/proc/" + std::to_string(cont_pid) + "/uid_map", 0, geteuid());
-            map_id("/proc/" + std::to_string(cont_pid) + "/uid_map", 0, 1000);
-            map_id("/proc/" + std::to_string(cont_pid) + "/gid_map", 0, getegid());
+
+            map_id("/proc/" + cont_pid_str + "/uid_map", { std::make_tuple(0, geteuid(), 1) });
+            map_id("/proc/" + cont_pid_str + "/gid_map", { std::make_tuple(0, getegid(), 1) });
         }
 
         void setup_uts()
@@ -339,6 +357,7 @@ namespace aucont
                 read_from_pipe<bool>(params.in_pipe_fd);
                 setup_net_cont(opts.ip, cont_pid);
             }
+            // filesystem configuration must be the very last
             setup_fs(opts.fsimg_path);
 
             // end configuring container
@@ -373,6 +392,9 @@ namespace aucont
             pipe2(from_cont_pipe_fds, O_CLOEXEC) != 0) {
             stdlib_error("Can't open pipes for IPC with container");
         }
+
+        // configuring future container's root
+        setup_fs_host(opts.fsimg_path);
 
         auto params = cont_params(opts, to_cont_pipe_fds[0], from_cont_pipe_fds[1],
                                   { to_cont_pipe_fds[1], from_cont_pipe_fds[0] });
@@ -416,7 +438,6 @@ namespace aucont
         write_to_pipe(to_cont_pipe_fds[1], true);
         close(to_cont_pipe_fds[1]);
 
-        // do not need to wait for daemon...
         if (opts.daemonize) {
             return;
         }

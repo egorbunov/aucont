@@ -30,10 +30,9 @@ int main(int argc, char* argv[]) {
     }
 
     if (aucont::get_container(pid).pid == -1) {
-        aucont::error("No container with pid [ " + std::to_string(pid) + " ]");
+        std::cout << "No container with pid [ " + std::to_string(pid) + " ] ==> nothing to kill" << std::endl;
     }
-
-    if (kill(pid, signum) < 0) {
+    if (kill(pid, signum) < 0 && errno != ESRCH) {
         aucont::stdlib_error("Can't send signal");
     }
 

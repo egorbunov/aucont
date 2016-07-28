@@ -10,12 +10,11 @@ make clean all
 cd ../
 
 for d in aucont_*/; do
-	cd "$d"
+    cd "$d"
     echo ============ Building $d ============
-	make clean all
-	cd ../
+    make clean all
+    cd ../
 done
 cd ../
 
 rm bin/*.o
-

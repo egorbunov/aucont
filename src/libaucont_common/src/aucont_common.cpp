@@ -149,6 +149,8 @@ namespace aucont
         cgrouph_dir = aucont_dir + "/cgrouph";
     }
 
+    // utility functions
+
     std::string get_real_path(std::string file_path)
     {
         char path_to_file[1000];
@@ -167,14 +169,14 @@ namespace aucont
 
     void error(std::string msg)
     {
-        std::cerr << "ERROR: " << msg << std::endl;
+        std::cerr << "AUCONT_ERROR: " << msg << std::endl;
         exit(1);
     }
 
     void stdlib_error(std::string msg)
     {
         std::stringstream ss;
-        ss << "ERROR: " << msg << " [ " << strerror(errno) << " ]";
+        ss << "AUCONT_ERROR: " << msg << " [ " << strerror(errno) << " ]";
         std::cerr << ss.str() << std::endl;
         exit(1);
     }

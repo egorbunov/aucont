@@ -6,19 +6,15 @@ CXX_FLAGS = -std=c++11 -Wall -Werror -Wextra -pedantic-errors -I../libaucont_com
 LD_FLAGS = -L$(BIN_DIR) -laucont_common -Wl,-rpath=$(BIN_DIR)
 SRC_EXT = cpp
 SRC_PATH = src
-SCRIPTS_PATH = scripts
-SCRIPTS_EXT = bash
 
 SOURCES = $(shell find $(SRC_PATH) -name '*.$(SRC_EXT)' -printf '%T@\t%p\n' | sort -k 1nr | cut -f2-)
 OBJECTS = $(SOURCES:$(SRC_PATH)/%.$(SRC_EXT)=$(BIN_DIR)/%.o)
-SCRIPTS = $(shell find $(SCRIPTS_PATH) -name '*.$(SCRIPTS_EXT)' -printf '%p\n')
-TARGET_SCRIPTS = $(SCRIPTS:$(SCRIPTS_PATH)/%.$(SCRIPTS_EXT)=$(BIN_DIR)/%.$(SCRIPTS_EXT))
 
 .PHONY: clean
 clean:
-	rm -rf $(BIN_DIR)/$(BIN_NAME) $(OBJECTS) $(TARGET_SCRIPTS)
+	rm -rf $(BIN_DIR)/$(BIN_NAME) $(OBJECTS)
 
-all: $(BIN_DIR) $(BIN_DIR)/$(BIN_NAME) $(TARGET_SCRIPTS)
+all: $(BIN_DIR) $(BIN_DIR)/$(BIN_NAME)
 
 $(BIN_DIR):
 	mkdir $(BIN_DIR)
@@ -28,6 +24,3 @@ $(BIN_DIR)/$(BIN_NAME): $(OBJECTS)
 
 $(BIN_DIR)/%.o: $(SRC_PATH)/%.$(SRC_EXT)
 	$(CXX) $(CXX_FLAGS) -c $< -o $@
-
-$(BIN_DIR)/%.$(SCRIPTS_EXT): $(SCRIPTS_PATH)/%.$(SCRIPTS_EXT)
-	cp $< $@

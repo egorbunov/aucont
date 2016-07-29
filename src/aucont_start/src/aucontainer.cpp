@@ -154,17 +154,23 @@ namespace aucont
             return ss.str();   
         }
 
+        string get_host_ip(string cont_ip)
+        {
+            struct in_addr addr;
+            inet_aton(cont_ip.c_str(), &addr);
+            return inet_ntoa(inet_makeaddr(inet_netof(addr), inet_lnaof(addr) + 1));
+        }
+
         /**
          * Configures container's side of networking interface
-         * @param ip           container's process ip
+         * @param cont_ip           container's process ip
          * @param host_pipe_fd read end of pipe to get veth device name from host
          */
-        void setup_net_cont(string scripts_path, string ip, pid_t cont_pid)
+        void setup_net_cont(string scripts_path, string cont_ip, pid_t cont_pid)
         {
             const string script = scripts_path + "setup_net_cont.bash";
-            string cont_ip = ip + "/24";
 
-            if (sysrun("bash", script, get_cont_veth_name(cont_pid), cont_ip) < 0) {
+            if (sysrun("bash", script, get_cont_veth_name(cont_pid), cont_ip, get_host_ip(cont_ip)) < 0) {
                 error("Can't setup networking (from container)");
             }
         }
@@ -177,12 +183,10 @@ namespace aucont
         void setup_net_host(string scripts_path, string cont_ip, pid_t cont_pid)
         {
             const string script = scripts_path + "setup_net_host.bash";
-            struct in_addr addr;
-            inet_aton(cont_ip.c_str(), &addr);
-            string host_ip = string(inet_ntoa(inet_makeaddr(inet_netof(addr), inet_lnaof(addr) + 1))) + "/24";
+
 
             if (sysrun("bash", script, cont_pid, get_host_veth_name(cont_pid), get_cont_veth_name(cont_pid), 
-                        host_ip) != 0) {
+                        get_host_ip(cont_ip)) != 0) {
                 error("Can't setup networking (from host)");
             }
         }

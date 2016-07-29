@@ -26,6 +26,10 @@
 
 namespace aucont
 {
+    using std::string;
+    using std::stringstream;
+    using std::vector;
+
     namespace
     {
         const size_t stack_size = 2 * 1024 * 1024; // 2 megabytes
@@ -36,10 +40,13 @@ namespace aucont
             const options& opts;
             int in_pipe_fd;
             int out_pipe_fd;
-            std::vector<int> fds_to_close;
+            vector<int> fds_to_close;
+            string scripts_path;
 
-            cont_params(const options& opts, int in_pipe_fd, int out_pipe_fd, std::initializer_list<int> const& fds_to_close)
-            : opts(opts), in_pipe_fd(in_pipe_fd), out_pipe_fd(out_pipe_fd), fds_to_close(fds_to_close)
+            cont_params(const options& opts, int in_pipe_fd, int out_pipe_fd, vector<int> fds_to_close, 
+                        string scripts_path)
+            : opts(opts), in_pipe_fd(in_pipe_fd), out_pipe_fd(out_pipe_fd), 
+              fds_to_close(std::move(fds_to_close)), scripts_path(scripts_path)
             {}
         };
 
@@ -47,10 +54,10 @@ namespace aucont
          * Configures filesystem of container from host side
          * @param path to container root directory
          */
-        void setup_fs_host(std::string cont_root)
+        void setup_fs_host(string cont_root)
         {
             (void) cont_root;
-            // std::stringstream cmdss;
+            // stringstream cmdss;
             // cmdss << "chown -R " << geteuid() << ":" << getegid() << " " << cont_root;
             // auto cmd = cmdss.str();
             // if (system(cmd.c_str()) != 0) {
@@ -62,12 +69,12 @@ namespace aucont
          * Configure file system inside container
          * @param root path to new containers root folder (path in host fs)
          */
-        void setup_fs(std::string root)
+        void setup_fs(string root)
         {
             if (root[root.length() - 1] != '/') {
                 root = root + "/";
             }
-            const std::string p_root_dir_name = ".p_root";
+            const string p_root_dir_name = ".p_root";
 
             // recursively making all mount points private
             if (mount(NULL, "/", NULL, MS_PRIVATE | MS_REC, NULL) != 0) {
@@ -75,25 +82,25 @@ namespace aucont
             }
             
             // mounting procfs
-            std::string procfs_path = root + "proc";
+            string procfs_path = root + "proc";
             if (mount(NULL, procfs_path.c_str(), "proc", MS_NOSUID | MS_NOEXEC | MS_NODEV, NULL) != 0) {
                 stdlib_error("Can't mount procfs to " + procfs_path);
             }
 
             // mounting sysfs
-            std::string sysfs_path = root + "sys";
+            string sysfs_path = root + "sys";
             if (mount(NULL, sysfs_path.c_str(), "sysfs", MS_NOSUID | MS_NOEXEC | MS_NODEV, NULL) != 0) {
                 stdlib_error("Can't mount sysfs to " + sysfs_path);
             }
 
             // creating special device files
-            std::vector<std::pair<std::string, bool>> devices = { std::make_pair("dev/zero", false), 
+            vector<std::pair<string, bool>> devices = { std::make_pair("dev/zero", false), 
                                                                   std::make_pair("dev/null", false), 
                                                                   std::make_pair("dev/mqueue", true),
                                                                   std::make_pair("dev/shm", true) };
             for (auto dev : devices) {
-                std::string from = "/" + dev.first;
-                std::string to = root + dev.first;
+                string from = "/" + dev.first;
+                string to = root + dev.first;
                 if (!dev.second) { // not a directory
                     auto dfd = open(to.c_str(), O_CREAT | O_RDWR, 0777);
                     if (dfd < 0 ||
@@ -111,7 +118,7 @@ namespace aucont
             }
              
             // changing root
-            std::string p_root = root + p_root_dir_name;
+            string p_root = root + p_root_dir_name;
             struct stat st;
             if (stat(p_root.c_str(), &st) != 0) {
                 if (mkdir(p_root.c_str(), 0777) != 0) {
@@ -127,22 +134,22 @@ namespace aucont
             if (chdir("/") != 0) {
                 stdlib_error("Can't change working directory");
             }
-            std::string old_root_dir = "/" + p_root_dir_name;
+            string old_root_dir = "/" + p_root_dir_name;
             if (umount2(old_root_dir.c_str(), MNT_DETACH) != 0) {
                 stdlib_error("Can't unmount old root");
             }
         }
 
-        std::string get_cont_veth_name(pid_t container_pid)
+        string get_cont_veth_name(pid_t container_pid)
         {
-            std::stringstream ss;
+            stringstream ss;
             ss << "cont_" << container_pid << "_veth";
             return ss.str();
         }
 
-        std::string get_host_veth_name(pid_t container_pid)
+        string get_host_veth_name(pid_t container_pid)
         {
-            std::stringstream ss;
+            stringstream ss;
             ss << "host_" << container_pid << "_veth";
             return ss.str();   
         }
@@ -152,25 +159,13 @@ namespace aucont
          * @param ip           container's process ip
          * @param host_pipe_fd read end of pipe to get veth device name from host
          */
-        void setup_net_cont(std::string ip, pid_t cont_pid)
+        void setup_net_cont(string scripts_path, string ip, pid_t cont_pid)
         {
-            struct in_addr addr;
-            inet_aton(ip.c_str(), &addr);
-            std::string cont_ip(inet_ntoa(addr));
-            cont_ip += "/24";
+            const string script = scripts_path + "setup_net_cont.bash";
+            string cont_ip = ip + "/24";
 
-            std::string cont_veth_name = get_cont_veth_name(cont_pid);
-
-            const size_t cmd_max_len = 300;
-            char cmd[cmd_max_len];
-            sprintf(cmd, "ip link set %s up", cont_veth_name.c_str());
-            if (system(cmd) != 0) {
-                error("Can't change cont veth state to UP");
-            }
-
-            sprintf(cmd, "ip addr add %s dev %s", cont_ip.c_str(), cont_veth_name.c_str());
-            if (system(cmd) != 0) {
-                error("Can't assign ip address to container");
+            if (sysrun("bash", script, get_cont_veth_name(cont_pid), cont_ip) < 0) {
+                error("Can't setup networking (from container)");
             }
         }
 
@@ -179,55 +174,28 @@ namespace aucont
          * @param cont_ip      ip a.b.c.d, which will be assigned to container; host ip will be a.b.c.(d+1)
          * @param cont_pid      container's process id
          */
-        void setup_net_host(std::string cont_ip, pid_t cont_pid)
+        void setup_net_host(string scripts_path, string cont_ip, pid_t cont_pid)
         {
+            const string script = scripts_path + "setup_net_host.bash";
             struct in_addr addr;
             inet_aton(cont_ip.c_str(), &addr);
-            std::string host_ip(inet_ntoa(inet_makeaddr(inet_netof(addr), inet_lnaof(addr) + 1)));
-            host_ip += "/24";
-            std::string host_veth_name = get_host_veth_name(cont_pid);
-            std::string cont_veth_name = get_cont_veth_name(cont_pid);
+            string host_ip = string(inet_ntoa(inet_makeaddr(inet_netof(addr), inet_lnaof(addr) + 1))) + "/24";
 
-            const size_t cmd_max_len = 300;
-            char cmd[cmd_max_len];
-            sprintf(cmd, "sudo ip link add %s type veth peer name %s", host_veth_name.c_str(), cont_veth_name.c_str());
-            if (system(cmd) != 0) {
-                error("Can't create veth pair");
-            }
-
-            sprintf(cmd, "sudo ip link set %s netns %d", cont_veth_name.c_str(), cont_pid);
-            if (system(cmd) != 0) {
-                error("Can't set container veth");
-            }
-
-            sprintf(cmd, "sudo ip link set %s up", host_veth_name.c_str());
-            if (system(cmd) != 0) {
-                error("Can't change host veth state to UP");
-            }
-
-            sprintf(cmd, "sudo ip addr add %s dev %s", host_ip.c_str(), host_veth_name.c_str());
-            if (system(cmd) != 0) {
-                error("Can't assign ip to host veth");
+            if (sysrun("bash", script, cont_pid, get_host_veth_name(cont_pid), get_cont_veth_name(cont_pid), 
+                        host_ip) != 0) {
+                error("Can't setup networking (from host)");
             }
         }
 
-        void setup_cgroup(std::string scripts_path, int cpu_perc, pid_t cont_pid)
+        void setup_cgroup(string scripts_path, int cpu_perc, pid_t cont_pid)
         {
-            const std::string script = "setup_cpu_cgroup.bash";
-
-            std::stringstream cmdss;
-            cmdss << "bash " << scripts_path << script << " " 
-                  << cpu_perc << " " << cont_pid 
-                  << " \"" << get_cgrouph_path() << "\"" // path to cgroup hierarchy root
-                  << " \"" << get_cgroup_for_cpuperc((uint8_t) cpu_perc) << "\"";
-            std::string cmd = cmdss.str();
-
-            if (system(cmd.c_str()) != 0) {
+            const string script = scripts_path + "setup_cpu_cgroup.bash";
+            if (sysrun("bash", script, cpu_perc, cont_pid, get_cgrouph_path(), get_cgroup_for_cpuperc(cpu_perc)) != 0) {
                 error("Can't setup cpu restrictions");
             }
         }
 
-        void map_id(std::string file, std::vector<std::tuple<uid_t, uid_t, uid_t>> mappings)
+        void map_id(string file, vector<std::tuple<uid_t, uid_t, uid_t>> mappings)
         {
             std::ofstream out(file);
             if (!out) {
@@ -248,18 +216,17 @@ namespace aucont
              * has s been disabled unless /proc/self/setgroups is written
              * first to permanently disable the ability to call setgroups
              * in that user namespace. */
-            std::string cont_pid_str = std::to_string(cont_pid);
+            string cont_pid_str = std::to_string(cont_pid);
             std::ofstream out("/proc/" + cont_pid_str + "/setgroups");
             out << "deny";
             out.close();
-
             map_id("/proc/" + cont_pid_str + "/uid_map", { std::make_tuple(0, geteuid(), 1) });
             map_id("/proc/" + cont_pid_str + "/gid_map", { std::make_tuple(0, getegid(), 1) });
         }
 
         void setup_uts()
         {
-            const std::string hostname = "container";
+            const string hostname = "container";
             if (sethostname(hostname.c_str(), hostname.length()) != 0) {
                 stdlib_error("Can't set container hostname");
             }
@@ -355,7 +322,7 @@ namespace aucont
             setup_uts();
             if (!opts.ip.empty()) {
                 read_from_pipe<bool>(params.in_pipe_fd);
-                setup_net_cont(opts.ip, cont_pid);
+                setup_net_cont(params.scripts_path, opts.ip, cont_pid);
             }
             // filesystem configuration must be the very last
             setup_fs(opts.fsimg_path);
@@ -380,7 +347,7 @@ namespace aucont
         }
     }
 
-    void start_container(const options& opts, std::string exe_path)
+    void start_container(const options& opts, string exe_path)
     {
         /**
          * Setting up IPC for syncronization with container (child)
@@ -397,7 +364,7 @@ namespace aucont
         setup_fs_host(opts.fsimg_path);
 
         auto params = cont_params(opts, to_cont_pipe_fds[0], from_cont_pipe_fds[1],
-                                  { to_cont_pipe_fds[1], from_cont_pipe_fds[0] });
+                                  { to_cont_pipe_fds[1], from_cont_pipe_fds[0] }, exe_path);
         auto pid = clone(container_start_proc, container_stack + stack_size, 
                               CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWUSER | CLONE_NEWIPC | 
                               SIGCHLD, 
@@ -417,7 +384,7 @@ namespace aucont
 
         // setting up networking if needed (host part)
         if (!opts.ip.empty()) {
-            setup_net_host(opts.ip, cont_pid);
+            setup_net_host(exe_path, opts.ip, cont_pid);
             // syncronizing with container; now container can setup it's network side
             write_to_pipe(to_cont_pipe_fds[1], true);
         }

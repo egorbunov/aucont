@@ -4,7 +4,9 @@
 #include <vector>
 #include <sys/types.h>
 #include <type_traits>
+#include <sstream>
 #include <unistd.h>
+#include <iostream>
 
 namespace aucont
 {
@@ -122,5 +124,34 @@ namespace aucont
                 buf = reinterpret_cast<void*>(reinterpret_cast<char*>(buf) + ret);
             }
         }
+    }
+
+    namespace
+    {
+        template<typename T>
+        void print_arg(std::ostream& out, const T& t) {
+            out << t;
+        }
+
+        template<typename T, typename... Args>
+        void print_arg(std::ostream& out, const T& t, Args... args) {
+            out << "\"" << t << "\"" << " ";
+            print_arg(out, args...);
+        }
+    }
+
+    /**
+     * Executes given command via system() call.
+     * Command is just a concatenation of given args with space delimiter.
+     * Every argument framed with quotes
+     */
+    template<typename... Args>
+    int sysrun(std::string cmd, Args... args)
+    {
+        std::stringstream ss;
+        ss << cmd << " ";
+        print_arg(ss, args...);
+        std::string command = ss.str();
+        return system(command.c_str());
     }
 }

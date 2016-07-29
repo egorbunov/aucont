@@ -11,6 +11,8 @@
 #include <cstring>
 #include <csignal>
 #include <cstdint>
+#include <functional>
+#include <numeric>
 
 namespace aucont
 {
@@ -155,7 +157,7 @@ namespace aucont
     {
         char path_to_file[1000];
         if (realpath(file_path.c_str(), path_to_file) == NULL) {
-            throw std::runtime_error("Can't get real path");
+            throw std::runtime_error("Can't get real path for [ " + file_path + " ]");
         }
         return std::string(path_to_file);
     }

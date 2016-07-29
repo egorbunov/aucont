@@ -54,10 +54,10 @@ namespace
                 }
             } else if (!std::strcmp(argv[i], "--net")) {
                 struct in_addr taddr;
-                if (!inet_aton(argv[i + 1], &taddr)) {
+                if (!inet_aton(argv[++i], &taddr)) {
                     throw std::runtime_error("Incorrect ip-address specified (see `man 3 inet_aton`)");
                 }
-                opts.ip = argv[++i];
+                opts.ip = inet_ntoa(taddr);
             } else {
                 opts.fsimg_path = aucont::get_real_path(argv[i++]);
                 opts.cmd = argv[i++];
@@ -80,20 +80,6 @@ namespace
 
         return opts;
     }
-
-    // void print_options(const aucont::options& opts)
-    // {
-    //         std::cout << "Daemonize     : " << (opts.daemonize ? "Yes" : "No") << std::endl
-    //                   << "CPU perc      : " << opts.cpu_perc << std::endl
-    //                   << "Containter IP : " << (opts.ip == nullptr ? "-" : opts.ip) << std::endl
-    //                   << "FS Image Path : " << (opts.fsimg_path == nullptr ? "-" : opts.fsimg_path) << std::endl
-    //                   << "CMD line      : " << (opts.cmd == nullptr ? "-" : opts.cmd);
-    //         int i = 1; // args[0] is always == cmd
-    //         while (opts.args[i] != nullptr) {
-    //             std::cout << " " << opts.args[i++];
-    //         }
-    //         std::cout << std::endl;
-    // }
 }
 
 int main(int argc, const char* argv[]) 

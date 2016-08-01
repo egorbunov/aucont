@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <ostream>
+#include <algorithm>
 
 #include <cstring>
 #include <cctype>
@@ -24,19 +25,9 @@ namespace
         std::cout << "       CMD - command to run inside container" << std::endl;
         std::cout << "       ARGS - arguments for CMD" << std::endl;
         std::cout << "       -d - daemonize" << std::endl;
-        std::cout << "       --cpu CPU_PERC - percent of cpu resources allocated for container 0..100" << std::endl;
-        std::cout << "       --net IP - create virtual network between host and container with container IP address" << std::endl;
-    }
-
-    bool is_number(const char* str) 
-    {
-        size_t len = std::strlen(str);
-        for (size_t i = 0; i < len; ++i) {
-            if (!std::isdigit(str[i])) {
-                return false;
-            }
-        }
-        return true;
+        std::cout << "       --cpu CPU_PERC - percent of cpu resources allocated for container 1..100" << std::endl;
+        std::cout << "       --net IP - create virtual network between host and container with container IP address" 
+        << std::endl;
     }
 
     aucont::options parse_options(int argc, const char** argv)
@@ -50,10 +41,14 @@ namespace
             if (!std::strcmp(argv[i], "-d")) {
                 opts.daemonize = true;
             } else if (!std::strcmp(argv[i], "--cpu")) {
-                if (!is_number(argv[i + 1])) {
-                    throw std::runtime_error("Percent of cpu resources must be a number in [0, 100]");
+                if (std::any_of(argv[i + 1], argv[i + 1] + strlen(argv[i + 1]), 
+                    [](char c){ return !std::isdigit(c); })) { // check if is number
+                    throw std::runtime_error("Percent of cpu resources must be a number!");
                 } else {
-                    opts.cpu_perc = std::max(0, std::min(100, std::atoi(argv[++i])));
+                    opts.cpu_perc = std::atoi(argv[++i]);
+                    if (opts.cpu_perc < 1 || opts.cpu_perc > 100) {
+                        throw std::runtime_error("Percent of cpu usage must be in [1, 100]");
+                    }
                 }
             } else if (!std::strcmp(argv[i], "--net")) {
                 struct in_addr taddr;

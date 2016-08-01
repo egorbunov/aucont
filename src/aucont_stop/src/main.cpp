@@ -2,11 +2,14 @@
 #include <sstream>
 #include <string>
 #include <stdexcept>
-#include <aucont_common.h>
-#include <sys/types.h>
+
 #include <csignal>
 #include <cstring>
 #include <cerrno>
+
+#include <sys/types.h>
+
+#include <aucont_common.h>
 
 namespace
 {

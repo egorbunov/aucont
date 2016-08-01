@@ -1,14 +1,17 @@
 #include <iostream>
 #include <sstream>
-#include <aucont_common.h>
+#include <stdexcept>
 #include <vector>
 #include <string>
+#include <ostream>
+
 #include <cstring>
 #include <cctype>
-#include <ostream>
 #include <cstdlib>
+
 #include <arpa/inet.h>
-#include <stdexcept>
+
+#include <aucont_common.h>
 
 #include "aucontainer.h"
 

@@ -1,17 +1,20 @@
 #include <iostream>
 #include <sstream>
+#include <array>
+#include <fstream>
+#include <string>
+
+#include <cstring>
+
+#include <fcntl.h>
 #include <unistd.h>
+#include <sched.h>
+#include <sys/syscall.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <cstring>
-#include <aucont_common.h>
-#include <string>
-#include <fcntl.h>
-#include <sys/syscall.h>
-#include <sched.h>
-#include <array>
 #include <sys/wait.h>
-#include <fstream>
+
+#include <aucont_common.h>
 
 namespace 
 {

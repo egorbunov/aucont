@@ -1,26 +1,28 @@
 #include "aucontainer.h"
 
-#include <sys/wait.h>
-#include <sys/mount.h>
-#include <linux/sched.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/syscall.h>
-#include <fcntl.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
+#include <fstream>
+#include <vector>
+#include <tuple>
 #include <utility>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <sstream>
+
 #include <cstring>
 #include <cerrno>
 #include <cstdio>
-#include <fstream>
-#include <vector>
-#include <tuple>
+
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/wait.h>
+#include <sys/mount.h>
+#include <sys/types.h>
+#include <sys/syscall.h>
+#include <sys/stat.h>
+#include <linux/sched.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include <aucont_common.h>
 
@@ -168,9 +170,9 @@ namespace aucont
          */
         void setup_net_cont(string scripts_path, string cont_ip, pid_t cont_pid)
         {
-            const string script = scripts_path + "setup_net_cont.bash";
+            const string script = scripts_path + "setup_net_cont.sh";
 
-            if (sysrun("bash", script, get_cont_veth_name(cont_pid), cont_ip, get_host_ip(cont_ip)) < 0) {
+            if (sysrun(script, get_cont_veth_name(cont_pid), cont_ip, get_host_ip(cont_ip)) < 0) {
                 error("Can't setup networking (from container)");
             }
         }
@@ -182,10 +184,10 @@ namespace aucont
          */
         void setup_net_host(string scripts_path, string cont_ip, pid_t cont_pid)
         {
-            const string script = scripts_path + "setup_net_host.bash";
+            const string script = scripts_path + "setup_net_host.sh";
 
 
-            if (sysrun("bash", script, cont_pid, get_host_veth_name(cont_pid), get_cont_veth_name(cont_pid), 
+            if (sysrun(script, cont_pid, get_host_veth_name(cont_pid), get_cont_veth_name(cont_pid), 
                         get_host_ip(cont_ip)) != 0) {
                 error("Can't setup networking (from host)");
             }
@@ -193,8 +195,8 @@ namespace aucont
 
         void setup_cgroup(string scripts_path, int cpu_perc, pid_t cont_pid)
         {
-            const string script = scripts_path + "setup_cpu_cgroup.bash";
-            if (sysrun("bash", script, cpu_perc, cont_pid, get_cgrouph_path(), get_cgroup_for_cpuperc(cpu_perc)) != 0) {
+            const string script = scripts_path + "setup_cpu_cgroup.sh";
+            if (sysrun(script, cpu_perc, cont_pid, get_cgrouph_path(), get_cgroup_for_cpuperc(cpu_perc)) != 0) {
                 error("Can't setup cpu restrictions");
             }
         }

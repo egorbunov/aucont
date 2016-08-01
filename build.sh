@@ -17,4 +17,5 @@ for d in aucont_*/; do
 done
 cd ../
 
+chmod +x bin/*.sh
 rm bin/*.o

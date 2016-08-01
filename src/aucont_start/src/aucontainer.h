@@ -1,8 +1,9 @@
 #pragma once
 
 #include <ostream>
-#include <netinet/in.h>
 #include <string>
+
+#include <netinet/in.h>
 
 
 namespace aucont

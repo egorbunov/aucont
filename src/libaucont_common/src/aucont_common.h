@@ -1,12 +1,14 @@
 #include <string>
 #include <set>
-#include <cstdint>
-#include <vector>
-#include <sys/types.h>
-#include <type_traits>
-#include <sstream>
-#include <unistd.h>
 #include <iostream>
+#include <type_traits>
+#include <vector>
+#include <sstream>
+
+#include <cstdint>
+
+#include <unistd.h>
+#include <sys/types.h>
 
 namespace aucont
 {

@@ -1,24 +1,26 @@
 #include "aucont_common.h"
 
-#include <unistd.h>
-#include <sys/stat.h>
-#include <fstream>
-#include <stdexcept>
-#include <iostream>
 #include <sstream>
+#include <fstream>
+#include <iostream>
+#include <stdexcept>
+#include <functional>
+#include <numeric>
+
 #include <cerrno>
 #include <cstring>
 #include <cstring>
 #include <csignal>
 #include <cstdint>
-#include <functional>
-#include <numeric>
+
+#include <unistd.h>
+#include <sys/stat.h>
 
 namespace aucont
 {
     namespace 
     {
-        std::string aucont_dir = ".";
+        std::string aucont_dir = "/usr/share/aucont";
         std::string pids_file = aucont_dir + "/containers";
         std::string cgrouph_dir = aucont_dir + "/cgrouph";
 
@@ -58,8 +60,6 @@ namespace aucont
             for (auto& cont : conts) {
                 out.write(reinterpret_cast<const char*>(&cont), sizeof(container_t) / sizeof(char));
             }
-            out.flush();
-            out.close();
         }
 
         bool is_proc_dead(pid_t pid)

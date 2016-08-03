@@ -249,7 +249,7 @@ namespace aucont
             auto pid = fork();
             if (pid < 0) {
                 stdlib_error("Can't daemonize");
-            } else if (pid == 0) {
+            } else if (pid != 0) {
                 exit(0);
             }
             if (setsid() < 0) {
@@ -259,7 +259,7 @@ namespace aucont
             pid = fork();
             if (pid < 0) {
                 stdlib_error("Can't daemonize (second fork)");
-            } else if (pid == 0) {
+            } else if (pid != 0) {
                 exit(0);
             }
             if (chdir("/") < 0) {

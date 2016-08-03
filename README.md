@@ -35,3 +35,13 @@ You can run `aucont_list` to see ids of all running containers. `5224` is here, 
 
 Now we are done with our container, so lets kill it. Command above sends signal `9` to container with id `5224`. `9` here stands for `SIGKILL`. To see other signal values and their meaning look at `man 7 signal` page.
 
+## test
+
+```bash
+cd test
+./run_test.sh
+```
+
+1. You will be asked to provide your root password to build docker container, where all tests run
+2. You will be asked to write container root password to do some aucont privileged stuff. Password is `111` as specified in `container/Dockerfile`
+

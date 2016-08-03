@@ -30,3 +30,10 @@
 
 # Folders
 bin/
+
+# VIM
+*.swp
+
+# AUCONT specific
+
+test/rootfs/

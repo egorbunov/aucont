@@ -43,5 +43,5 @@ cd test
 ```
 
 1. You will be asked to provide your root password to build docker container, where all tests run
-2. You will be asked to write container root password to do some aucont privileged stuff. Password is `111` as specified in `container/Dockerfile`
-
+2. You will be asked to write docker container's root password to do some aucont privileged stuff. Password is `111` as specified in `container/Dockerfile`
+3. As last test stage `sh` shell prompt will show up, that `sh` shell runs inside container, actually, it is just aucont started with command: `./aucont_start /path/to/rootfs /bin/sh`. So you can manually check isolated environment.
